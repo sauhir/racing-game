@@ -52,6 +52,10 @@ export class ChaseCamera {
     this.camera.position.set(x - fx * back + sx, height, z - fz * back + sz);
     this.target.set(x + fx * ahead + sx, 0, z + fz * ahead + sz);
     this.camera.lookAt(this.target);
+    // The view widens under boost for a rush of speed.
+    const base = (this.camera.userData.baseFov as number | undefined) ?? 48;
+    this.camera.fov = base + Math.max(0, this.zoom - 1) * 14;
+    this.camera.updateProjectionMatrix();
   }
 
   /** Slow circling shot for the title screen. */
@@ -64,6 +68,8 @@ export class ChaseCamera {
     // Aiming below the subject lifts it clear of menus at the bottom of the screen.
     this.target.set(x, 1 + lookDown, z);
     this.camera.lookAt(this.target);
+    this.camera.fov = (this.camera.userData.baseFov as number | undefined) ?? 48;
+    this.camera.updateProjectionMatrix();
     this.first = true;
   }
 }

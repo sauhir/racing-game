@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import type { Quality } from '../core/settings';
 import type { Theme } from './themes';
 
@@ -13,6 +17,8 @@ export class View {
   private readonly sun: THREE.DirectionalLight;
   private readonly hemi: THREE.HemisphereLight;
   private quality: Quality = 'high';
+  private readonly composer: EffectComposer;
+  private readonly bloom: UnrealBloomPass;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -35,6 +41,15 @@ export class View {
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);
+
+    // Post-processing: render in HDR, then bloom whatever is brighter than
+    // white (glow particles, boxes, flames, pads) so it genuinely shines.
+    const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+    this.composer = new EffectComposer(this.renderer, target);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.6, 0.5, 1.0);
+    this.composer.addPass(this.bloom);
+    this.composer.addPass(new OutputPass());
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -70,11 +85,15 @@ export class View {
   resize(): void {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    this.renderer.setPixelRatio(this.quality === 'high' ? Math.min(window.devicePixelRatio, 2) : 1);
+    const ratio = this.quality === 'high' ? Math.min(window.devicePixelRatio, 2) : 1;
+    this.renderer.setPixelRatio(ratio);
     this.renderer.setSize(w, h, false);
+    this.composer.setPixelRatio(ratio);
+    this.composer.setSize(w, h);
     this.camera.aspect = w / h;
     // Keep a useful view ahead on tall, narrow windows.
     this.camera.fov = w / h < 1 ? 62 : 48;
+    this.camera.userData.baseFov = this.camera.fov;
     this.camera.updateProjectionMatrix();
   }
 
@@ -84,6 +103,8 @@ export class View {
   }
 
   render(): void {
-    this.renderer.render(this.scene, this.camera);
+    // Low quality skips the bloom pipeline entirely.
+    if (this.quality === 'low') this.renderer.render(this.scene, this.camera);
+    else this.composer.render();
   }
 }

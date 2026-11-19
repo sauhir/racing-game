@@ -16,7 +16,7 @@ export type RaceEvent =
   | { type: 'lap'; car: Car }
   | { type: 'finish'; car: Car }
   | { type: 'respawn'; car: Car }
-  | { type: 'pickup'; car: Car; prize: BoxPrize }
+  | { type: 'pickup'; car: Car; prize: BoxPrize; x: number; y: number }
   | { type: 'item'; car: Car; item: ItemType }
   | { type: 'wreck'; car: Car }
   | { type: 'jump'; car: Car }
@@ -293,21 +293,26 @@ export class Race {
       events.push(e);
       if (e.type === 'struck' && e.result === 'wreck') this.wreck(e.car, events);
     }
-    for (const box of this.boxes) {
-      if (box.respawn > 0) {
-        box.respawn = Math.max(0, box.respawn - dt);
-        continue;
+    for (const box of this.boxes) box.respawn = Math.max(0, box.respawn - dt);
+    // Each car takes the nearest box within reach, so nobody clears a lane they are not in.
+    for (const car of this.cars) {
+      if (car.item || car.wrecked > 0 || car.finished) continue;
+      let nearest: PickupBox | null = null;
+      let best = BOX_RADIUS * BOX_RADIUS;
+      for (const box of this.boxes) {
+        if (box.respawn > 0) continue;
+        const d = (car.x - box.x) ** 2 + (car.y - box.y) ** 2;
+        if (d <= best) {
+          best = d;
+          nearest = box;
+        }
       }
-      for (const car of this.cars) {
-        if (car.item || car.wrecked > 0 || car.finished) continue;
-        if ((car.x - box.x) ** 2 + (car.y - box.y) ** 2 > BOX_RADIUS * BOX_RADIUS) continue;
-        const prize = rollPrize(this.placeOf(car), this.cars.length, car.health, this.prizeRng);
-        if (prize === 'repair') repair(car);
-        else car.item = prize;
-        box.respawn = BOX_RESPAWN;
-        events.push({ type: 'pickup', car, prize });
-        break;
-      }
+      if (!nearest) continue;
+      const prize = rollPrize(this.placeOf(car), this.cars.length, car.health, this.prizeRng);
+      if (prize === 'repair') repair(car);
+      else car.item = prize;
+      nearest.respawn = BOX_RESPAWN;
+      events.push({ type: 'pickup', car, prize, x: nearest.x, y: nearest.y });
     }
   }
 

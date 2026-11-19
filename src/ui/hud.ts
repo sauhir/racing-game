@@ -111,6 +111,14 @@ export class Hud {
   private mapOy = 0;
   private messageTimer = 0;
   private padHints = false;
+  private readonly flashEl = $('flash');
+  private readonly itemPop = $('item-pop');
+  private readonly boostWrap = $('boost-wrap');
+  private readonly placeEl = $('hud-place');
+  private lastPlace = 0;
+  /** Seconds left of the item-slot roulette, and until its next frame. */
+  private roulette = 0;
+  private rouletteTick = 0;
   private stickyMessage = false;
 
   setTrack(track: Track): void {
@@ -185,9 +193,22 @@ export class Hud {
     $('car-stats').replaceChildren(...statBars(stats));
   }
 
+  /** A burst of colour over the whole screen. */
+  flash(kind: 'pickup' | 'boom' | 'hit' | 'boost' | 'shield' | 'gold', strength = 1, seconds = 0.45): void {
+    const el = this.flashEl;
+    el.className = '';
+    el.style.setProperty('--flash', String(Math.min(1, strength)));
+    el.style.setProperty('--flash-time', `${seconds}s`);
+    void el.offsetWidth;
+    el.className = `go ${kind}`;
+  }
+
   /** Flash a centre-screen message. seconds = 0 keeps it until cleared. */
   say(text: string, seconds: number, style: '' | 'warn' | 'small' | 'small warn' = ''): void {
     this.message.textContent = text;
+    this.message.className = '';
+    // Reading the size forces a reflow so the entrance animation restarts.
+    void this.message.offsetWidth;
     this.message.className = `show ${style}`;
     this.messageTimer = seconds;
     this.stickyMessage = seconds === 0;
@@ -216,18 +237,52 @@ export class Hud {
     this.speed.textContent = String(Math.round(p.speed * 3.6));
     this.boostBar.style.width = `${Math.round(p.boost * 100)}%`;
     this.boostBar.className = p.boosting ? 'firing' : p.boost >= 0.15 ? 'ready' : '';
+    this.boostWrap.classList.toggle('full', p.boost >= 0.99 && !p.boosting);
+    if (place !== this.lastPlace) {
+      if (this.lastPlace !== 0 && race.phase === 'racing') {
+        this.placeEl.className = '';
+        void this.placeEl.offsetWidth;
+        this.placeEl.className = place < this.lastPlace ? 'up' : 'down';
+      }
+      this.lastPlace = place;
+    }
 
     this.healthBar.style.width = `${Math.round(p.health * 100)}%`;
     this.healthBar.className = p.health < 0.3 ? 'low' : p.health < 0.6 ? 'mid' : '';
+    // Icons are fixed strings defined above, never user input.
     if (p.item !== this.shownItem) {
       this.shownItem = p.item;
-      // Icons are fixed strings defined above, never user input.
-      this.itemIcon.innerHTML = p.item ? ITEM_ICONS[p.item] : '';
-      this.itemName.textContent = p.item ? ITEM_NAMES[p.item] : '';
-      this.itemSlot.classList.remove('has');
+      this.itemSlot.classList.remove('has', 'spin');
+      this.itemPop.className = '';
       if (p.item) {
+        // A new prize: spin the slot through the items before revealing it.
+        this.roulette = 0.55;
+        this.rouletteTick = 0;
+        this.itemSlot.classList.add('spin');
+        this.itemName.textContent = '???';
+      } else {
+        this.roulette = 0;
+        this.itemIcon.innerHTML = '';
+        this.itemName.textContent = '';
+      }
+    }
+    if (this.roulette > 0 && p.item) {
+      this.roulette -= dt;
+      this.rouletteTick -= dt;
+      if (this.roulette <= 0) {
+        this.itemIcon.innerHTML = ITEM_ICONS[p.item];
+        this.itemName.textContent = ITEM_NAMES[p.item];
+        this.itemSlot.classList.remove('spin');
         void this.itemSlot.offsetWidth;
         this.itemSlot.classList.add('has');
+        $('item-pop-icon').innerHTML = ITEM_ICONS[p.item];
+        $('item-pop-name').textContent = `${ITEM_NAMES[p.item]}!`;
+        void this.itemPop.offsetWidth;
+        this.itemPop.className = 'go';
+      } else if (this.rouletteTick <= 0) {
+        this.rouletteTick = 0.06;
+        const all = Object.keys(ITEM_ICONS) as ItemType[];
+        this.itemIcon.innerHTML = ITEM_ICONS[all[Math.floor(Math.random() * all.length)]];
       }
     }
 

@@ -76,17 +76,18 @@ describe('mystery boxes', () => {
     race.start();
     for (let i = 0; i < 3.2 * 60; i++) race.step(DT, NO_INPUT);
     const p = race.player;
-    const box = race.boxes[2];
+    const box = race.boxes[0];
     p.place(box.x, box.y, 0);
     p.sampleIdx = track.nearestGlobal(box.x, box.y);
     const pickups = race.step(DT, NO_INPUT).filter((e) => e.type === 'pickup');
     expect(pickups).toHaveLength(1);
+    expect(pickups[0]).toMatchObject({ car: p, x: box.x, y: box.y });
     expect(p.item).not.toBeNull();
     expect(box.respawn).toBe(BOX_RESPAWN);
 
     // Holding an item, the car leaves other boxes alone.
     const held = p.item;
-    const other = race.boxes[3];
+    const other = race.boxes[4];
     p.place(other.x, other.y, 0);
     race.step(DT, NO_INPUT);
     expect(p.item).toBe(held);
@@ -96,6 +97,61 @@ describe('mystery boxes', () => {
     p.sampleIdx = 0;
     for (let i = 0; i < (BOX_RESPAWN + 0.1) * 60; i++) race.step(DT, NO_INPUT);
     expect(box.respawn).toBe(0);
+  });
+});
+
+describe('box reach', () => {
+  const raceWith = (rivals: number) => {
+    const race = new Race(track, {
+      laps: 3, playerName: 'You', playerColor: PLAYER_COLOR, rivals: RIVALS.slice(0, rivals), seed: 2,
+    });
+    race.start();
+    for (let i = 0; i < 3.2 * 60; i++) race.step(DT, NO_INPUT);
+    return race;
+  };
+  const park = (car: Car, x: number, y: number) => {
+    car.place(x, y, 0);
+    car.sampleIdx = track.nearestGlobal(x, y);
+    car.item = null;
+  };
+
+  it('is generous: anywhere across the road at a row gets a box', () => {
+    const row = track.pointAt(MEADOW.boxRows[0] * track.length, 0);
+    const s = track.samples[row.index];
+    for (let lat = -(s.hw - 1); lat <= s.hw - 1; lat += 0.5) {
+      const race = raceWith(0);
+      park(race.player, s.x + s.nx * lat, s.y + s.ny * lat);
+      race.step(DT, NO_INPUT);
+      expect(race.player.item, `lateral ${lat}`).not.toBeNull();
+    }
+  });
+
+  it('gives each car the box nearest to it, not one from another lane', () => {
+    const race = raceWith(1);
+    const [rival, player] = race.cars;
+    const boxes = race.boxes.slice(0, 5);
+    // The rival sits between boxes 1 and 2, closer to 2; the player is right on box 1.
+    park(rival, boxes[1].x * 0.3 + boxes[2].x * 0.7, boxes[1].y * 0.3 + boxes[2].y * 0.7);
+    park(player, boxes[1].x, boxes[1].y);
+    const got = race.step(DT, NO_INPUT).filter((e) => e.type === 'pickup');
+    expect(got).toHaveLength(2);
+    expect(boxes.map((b) => b.respawn > 0)).toEqual([false, true, true, false, false]);
+  });
+
+  it('refills fast enough for a whole pack in single file', () => {
+    const race = raceWith(5);
+    const box = race.boxes[2];
+    let served = 0;
+    race.cars.forEach((car, i) => {
+      // Cars arrive at the same box 0.6 s apart.
+      park(car, 0, 0);
+      for (let k = 0; k < 0.6 * 60; k++) race.step(DT, NO_INPUT);
+      park(car, box.x, box.y);
+      if (race.step(DT, NO_INPUT).some((e) => e.type === 'pickup' && e.car === car)) served++;
+      park(car, 300 + i * 20, 400);
+      car.item = 'shield';
+    });
+    expect(served).toBe(6);
   });
 });
 

@@ -227,6 +227,8 @@ export function buildTrackScene(track: Track): TrackScene {
   const padTex = chevronTexture('#1ec8ff', '#ffffff');
   padTex.repeat.set(2, 1);
   const padMat = new THREE.MeshBasicMaterial({
+    // Brighter than white, so the pads glow through the bloom pass.
+    color: new THREE.Color(0xffffff).multiplyScalar(1.5),
     map: padTex, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
   });
   for (const pad of track.pads) {

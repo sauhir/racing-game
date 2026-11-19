@@ -6,11 +6,39 @@ const SPHERE = new THREE.SphereGeometry(1, 24, 16);
 const GLASS = new THREE.MeshStandardMaterial({ color: 0x1c2a44, roughness: 0.15, metalness: 0.3 });
 const TYRE = new THREE.MeshLambertMaterial({ color: 0x23232b });
 const CHROME = new THREE.MeshStandardMaterial({ color: 0xeef1f6, roughness: 0.25, metalness: 0.5 });
-const LAMP = new THREE.MeshBasicMaterial({ color: 0xfff6c8 });
-const TAIL = new THREE.MeshBasicMaterial({ color: 0xff3b30 });
+// Lamps are brighter than white so they bloom.
+const LAMP = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xfff6c8).multiplyScalar(2.2) });
+const TAIL = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff3b30).multiplyScalar(2.2) });
 const STRIPE = new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.4 });
-const SHIELD = new THREE.MeshBasicMaterial({
-  color: 0x6fe8ff, transparent: true, opacity: 0.32, depthWrite: false,
+/** Energy bubble: bright at the rim, with bands of light rolling over it. */
+const SHIELD = new THREE.ShaderMaterial({
+  uniforms: { time: { value: 0 } },
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  vertexShader: /* glsl */ `
+    varying vec3 vNormal;
+    varying vec3 vView;
+    varying vec3 vLocal;
+    void main() {
+      vLocal = position;
+      vec4 world = modelMatrix * vec4(position, 1.0);
+      vNormal = normalize(mat3(modelMatrix) * normal);
+      vView = normalize(cameraPosition - world.xyz);
+      gl_Position = projectionMatrix * viewMatrix * world;
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform float time;
+    varying vec3 vNormal;
+    varying vec3 vView;
+    varying vec3 vLocal;
+    void main() {
+      float rim = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.2);
+      float bands = smoothstep(0.75, 1.0, sin(vLocal.y * 9.0 - time * 5.0));
+      float cells = smoothstep(0.8, 1.0, sin(vLocal.x * 14.0 + time * 2.0) * sin(vLocal.z * 14.0 - time * 2.0));
+      vec3 col = vec3(0.25, 0.9, 1.0) * (0.2 + rim * 1.5 + bands * 0.5 + cells * 0.7);
+      gl_FragColor = vec4(col, 0.15 + rim * 0.6 + bands * 0.15);
+    }
+  `,
 });
 const TYRE_GEO = new THREE.CylinderGeometry(1, 1, 1, 14);
 const HUB_GEO = new THREE.SphereGeometry(0.3, 12, 8);
@@ -227,6 +255,7 @@ export class CarMesh {
     // Gone while wrecked; blinking while briefly invulnerable after a respawn.
     this.root.visible = c.wrecked <= 0 && !(c.invulnerable > 0 && Math.floor(time * 12) % 2 === 0);
     this.shield.visible = c.shield > 0;
+    SHIELD.uniforms.time.value = time;
     if (c.shield > 0) {
       const pulse = 1 + Math.sin(time * 9) * 0.04;
       this.shield.scale.set(3 * pulse, 2.2 * pulse, 2.4 * pulse);

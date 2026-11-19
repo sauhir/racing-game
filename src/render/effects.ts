@@ -2,26 +2,114 @@ import * as THREE from 'three';
 import type { Car } from '../sim/car';
 import type { Missile } from '../sim/weapons';
 
-const MAX_PARTICLES = 700;
 const MAX_SKID_QUADS = 4000;
 const REAR_X = -1.3;
 const WHEEL_Z = 1;
+const RAINBOW = [0xff3b5c, 0xffa02e, 0xffe14a, 0x4fe36a, 0x38c8ff, 0xb46bff];
 
 interface Particle {
   x: number; y: number; z: number;
   vx: number; vy: number; vz: number;
   life: number; maxLife: number;
-  size: number; grow: number;
+  size: number; grow: number; gravity: number;
 }
 
-/** Tyre smoke, boost flames, dirt, sparks and skid marks. All pooled, no allocation per frame. */
-export class Effects {
-  readonly group = new THREE.Group();
+/** A fixed pool of instanced blobs. `glow` pools are additive and bloom brightly. */
+class ParticlePool {
+  readonly mesh: THREE.InstancedMesh;
   private readonly particles: Particle[] = [];
-  private readonly mesh: THREE.InstancedMesh;
   private readonly dummy = new THREE.Object3D();
   private readonly color = new THREE.Color();
   private next = 0;
+
+  constructor(
+    private readonly size: number,
+    private readonly glow: boolean,
+  ) {
+    this.mesh = new THREE.InstancedMesh(
+      new THREE.IcosahedronGeometry(0.5, glow ? 1 : 0),
+      glow
+        ? new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })
+        : new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.8, depthWrite: false }),
+      size,
+    );
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = glow ? 3 : 2;
+    this.dummy.scale.setScalar(0);
+    this.dummy.updateMatrix();
+    for (let i = 0; i < size; i++) {
+      this.particles.push({
+        x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 1, size: 1, grow: 0, gravity: 0,
+      });
+      this.mesh.setMatrixAt(i, this.dummy.matrix);
+      this.mesh.setColorAt(i, this.color.set(0xffffff));
+    }
+  }
+
+  spawn(
+    x: number, y: number, z: number, vx: number, vy: number, vz: number,
+    life: number, size: number, grow: number, color: number, gravity = 0,
+  ): void {
+    const i = this.next;
+    this.next = (this.next + 1) % this.size;
+    const p = this.particles[i];
+    p.x = x; p.y = y; p.z = z;
+    p.vx = vx; p.vy = vy; p.vz = vz;
+    p.life = p.maxLife = life;
+    p.size = size;
+    p.grow = grow;
+    p.gravity = gravity;
+    this.color.set(color);
+    // Glow colours are pushed past white so the bloom pass picks them up.
+    if (this.glow) this.color.multiplyScalar(1.5);
+    this.mesh.setColorAt(i, this.color);
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+  }
+
+  update(dt: number): void {
+    for (let i = 0; i < this.size; i++) {
+      const p = this.particles[i];
+      if (p.life <= 0) continue;
+      p.life -= dt;
+      p.vy -= p.gravity * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.z += p.vz * dt;
+      p.vx *= 1 - 2 * dt;
+      p.vz *= 1 - 2 * dt;
+      if (p.y < 0.15 && p.gravity > 0) {
+        p.y = 0.15;
+        p.vy = Math.abs(p.vy) * 0.45;
+      }
+      const t = 1 - Math.max(0, p.life) / p.maxLife;
+      // Swell with age, then shrink away over the final third.
+      const fade = t > 0.66 ? (1 - t) / 0.34 : 1;
+      const s = p.life <= 0 ? 0 : Math.max(0, p.size + p.grow * t) * fade;
+      this.dummy.position.set(p.x, Math.max(0.15, p.y), p.z);
+      this.dummy.scale.setScalar(s);
+      this.dummy.updateMatrix();
+      this.mesh.setMatrixAt(i, this.dummy.matrix);
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  clear(): void {
+    for (const p of this.particles) p.life = 0;
+    this.dummy.scale.setScalar(0);
+    this.dummy.updateMatrix();
+    for (let i = 0; i < this.size; i++) this.mesh.setMatrixAt(i, this.dummy.matrix);
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+
+/**
+ * Smoke, dirt and skid marks, plus a glowing additive layer for sparks,
+ * flames, confetti and bursts. All pooled, no allocation per frame.
+ */
+export class Effects {
+  readonly group = new THREE.Group();
+  private readonly smoke = new ParticlePool(900, false);
+  private readonly glow = new ParticlePool(1800, true);
   /** Colours of the dirt kicked up off the road; set per track theme. */
   dirt: [number, number] = [0x8a6a42, 0x6fae4f];
 
@@ -33,20 +121,6 @@ export class Effects {
   private readonly emitDebt = new Map<Car, number>();
 
   constructor() {
-    this.mesh = new THREE.InstancedMesh(
-      new THREE.IcosahedronGeometry(0.5, 0),
-      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.8, depthWrite: false }),
-      MAX_PARTICLES,
-    );
-    this.mesh.frustumCulled = false;
-    this.dummy.scale.setScalar(0);
-    this.dummy.updateMatrix();
-    for (let i = 0; i < MAX_PARTICLES; i++) {
-      this.particles.push({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 1, size: 1, grow: 0 });
-      this.mesh.setMatrixAt(i, this.dummy.matrix);
-      this.mesh.setColorAt(i, this.color.set(0xffffff));
-    }
-
     this.skidGeo.setAttribute('position', new THREE.BufferAttribute(this.skidPos, 3));
     this.skidGeo.setDrawRange(0, 0);
     const skids = new THREE.Mesh(
@@ -57,58 +131,84 @@ export class Effects {
       }),
     );
     skids.frustumCulled = false;
-    this.group.add(skids, this.mesh);
+    this.group.add(skids, this.smoke.mesh, this.glow.mesh);
   }
 
-  private spawn(
-    x: number, y: number, z: number, vx: number, vy: number, vz: number,
-    life: number, size: number, grow: number, color: number,
-  ): void {
-    const i = this.next;
-    this.next = (this.next + 1) % MAX_PARTICLES;
-    const p = this.particles[i];
-    p.x = x; p.y = y; p.z = z;
-    p.vx = vx; p.vy = vy; p.vz = vz;
-    p.life = p.maxLife = life;
-    p.size = size;
-    p.grow = grow;
-    this.mesh.setColorAt(i, this.color.set(color));
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-  }
-
+  /** Sparks from a collision. */
   burst(x: number, z: number, strength: number): void {
-    const n = Math.min(24, 6 + Math.floor(strength));
+    const n = Math.min(40, 10 + Math.floor(strength * 1.5));
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
-      const v = 4 + Math.random() * 10;
-      this.spawn(x, 0.8, z, Math.cos(a) * v, 3 + Math.random() * 6, Math.sin(a) * v,
-        0.25 + Math.random() * 0.3, 0.35, -0.5, Math.random() < 0.5 ? 0xffe36b : 0xff9a2e);
+      const v = 5 + Math.random() * 14;
+      this.glow.spawn(x, 0.8, z, Math.cos(a) * v, 4 + Math.random() * 8, Math.sin(a) * v,
+        0.3 + Math.random() * 0.4, 0.28, -0.2, Math.random() < 0.5 ? 0xffe36b : 0xff9a2e, 26);
     }
   }
 
-  /** Fireball, smoke and sparks for missiles, mines and wrecked cars. */
+  /** Fireball, embers, smoke and sparks for missiles, mines and wrecked cars. */
   explosion(x: number, z: number): void {
-    for (let i = 0; i < 26; i++) {
+    for (let i = 0; i < 46; i++) {
       const a = Math.random() * Math.PI * 2;
-      const v = Math.random() * 9;
-      this.spawn(x, 0.8 + Math.random(), z, Math.cos(a) * v, 2 + Math.random() * 7, Math.sin(a) * v,
-        0.35 + Math.random() * 0.35, 1.2, 3.2, [0xfff2a0, 0xffb02e, 0xff6a1a][i % 3]);
+      const v = Math.random() * 11;
+      this.glow.spawn(x, 0.8 + Math.random() * 1.5, z, Math.cos(a) * v, 2 + Math.random() * 9, Math.sin(a) * v,
+        0.35 + Math.random() * 0.45, 1.3, 3.4, [0xfff2a0, 0xffb02e, 0xff5a1a][i % 3]);
+    }
+    for (let i = 0; i < 40; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = 8 + Math.random() * 22;
+      this.glow.spawn(x, 1, z, Math.cos(a) * v, 6 + Math.random() * 16, Math.sin(a) * v,
+        0.6 + Math.random() * 0.8, 0.3, -0.1, i % 2 ? 0xffd24a : 0xff7a1a, 30);
+    }
+    for (let i = 0; i < 18; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = 2 + Math.random() * 6;
+      this.smoke.spawn(x, 1.5, z, Math.cos(a) * v, 4 + Math.random() * 5, Math.sin(a) * v,
+        0.9 + Math.random() * 0.8, 1.6, 4, 0x3f3f4a);
+    }
+  }
+
+  /** Rainbow confetti fountain for grabbing a mystery box. */
+  pickup(x: number, z: number): void {
+    for (let i = 0; i < 70; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = 4 + Math.random() * 13;
+      this.glow.spawn(x, 1.6, z, Math.cos(a) * v, 7 + Math.random() * 13, Math.sin(a) * v,
+        0.6 + Math.random() * 0.7, 0.34, -0.1, RAINBOW[i % RAINBOW.length], 30);
+    }
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2;
+      this.glow.spawn(x, 1.6, z, Math.cos(a) * 16, 0.5, Math.sin(a) * 16, 0.3, 0.9, -0.6, 0xffffff);
+    }
+  }
+
+  /** Twinkles drifting up around a waiting mystery box. */
+  sparkle(x: number, z: number, hue: number): void {
+    const a = Math.random() * Math.PI * 2;
+    const r = 0.8 + Math.random() * 1.4;
+    this.glow.spawn(x + Math.cos(a) * r, 0.4 + Math.random() * 2.6, z + Math.sin(a) * r,
+      0, 1.2 + Math.random() * 1.5, 0, 0.5 + Math.random() * 0.5, 0.22, -0.1, RAINBOW[hue % RAINBOW.length]);
+  }
+
+  /** A ring of sparks thrown outward along the ground (shockwave, shield pop, boost pad). */
+  ringBurst(x: number, z: number, color: number, speed: number, count = 36): void {
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2;
+      this.glow.spawn(x, 0.7, z, Math.cos(a) * speed, 1 + Math.random() * 2, Math.sin(a) * speed,
+        0.35 + Math.random() * 0.2, 0.5, -0.3, color);
+    }
+  }
+
+  /** Puff of dust and a few sparks where a car lands from a jump. */
+  landing(car: Car): void {
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * Math.PI * 2;
+      this.smoke.spawn(car.x, 0.4, car.y, car.vx * 0.3 + Math.cos(a) * 6, 1 + Math.random() * 2,
+        car.vy * 0.3 + Math.sin(a) * 6, 0.4 + Math.random() * 0.3, 0.7, 2.2, 0xe9edf2);
     }
     for (let i = 0; i < 12; i++) {
       const a = Math.random() * Math.PI * 2;
-      const v = 2 + Math.random() * 5;
-      this.spawn(x, 1.5, z, Math.cos(a) * v, 4 + Math.random() * 4, Math.sin(a) * v,
-        0.8 + Math.random() * 0.6, 1.4, 3.5, 0x4a4a55);
-    }
-    this.burst(x, z, 20);
-  }
-
-  /** Puff of dust where a car lands from a jump. */
-  landing(car: Car): void {
-    for (let i = 0; i < 10; i++) {
-      const a = Math.random() * Math.PI * 2;
-      this.spawn(car.x, 0.4, car.y, car.vx * 0.3 + Math.cos(a) * 5, 1 + Math.random() * 2,
-        car.vy * 0.3 + Math.sin(a) * 5, 0.4 + Math.random() * 0.3, 0.7, 2, 0xe9edf2);
+      this.glow.spawn(car.x, 0.3, car.y, car.vx * 0.5 + Math.cos(a) * 8, 2 + Math.random() * 5,
+        car.vy * 0.5 + Math.sin(a) * 8, 0.3 + Math.random() * 0.3, 0.22, 0, 0xffd98a, 26);
     }
   }
 
@@ -132,9 +232,13 @@ export class Effects {
 
   /** Emit from the cars' current state, then advance all particles. */
   update(cars: readonly Car[], missiles: readonly Missile[], dt: number): void {
+    const j = () => (Math.random() - 0.5) * 2;
     for (const m of missiles) {
-      this.spawn(m.x, 1.1, m.y, (Math.random() - 0.5) * 2, 0.5, (Math.random() - 0.5) * 2,
-        0.3 + Math.random() * 0.2, 0.5, 1.2, Math.random() < 0.3 ? 0xffb02e : 0xf2f4f8);
+      const bx = m.x - Math.cos(m.heading) * 1.2;
+      const bz = m.y - Math.sin(m.heading) * 1.2;
+      this.glow.spawn(bx, 1.1, bz, j(), 0.5, j(), 0.22 + Math.random() * 0.15, 0.8, -0.5,
+        Math.random() < 0.5 ? 0xffb02e : 0xfff2a0);
+      this.smoke.spawn(bx, 1.1, bz, j() * 2, 0.8, j() * 2, 0.5 + Math.random() * 0.3, 0.5, 1.6, 0xf2f4f8);
     }
     for (const car of cars) {
       if (car.wrecked > 0) {
@@ -167,52 +271,55 @@ export class Effects {
         debt -= 1;
         const side = Math.random() < 0.5 ? 1 : -1;
         const [wx, wz] = side > 0 ? [lx, lz] : [rx, rz];
-        const j = () => (Math.random() - 0.5) * 2;
         if (sliding && Math.random() < 0.25 + car.slide * 0.5) {
-          this.spawn(wx, 0.4, wz, car.vx * 0.15 + j(), 1.5 + Math.random(), car.vy * 0.15 + j(),
+          this.smoke.spawn(wx, 0.4, wz, car.vx * 0.15 + j(), 1.5 + Math.random(), car.vy * 0.15 + j(),
             0.5 + Math.random() * 0.4, 0.7, 2.6, 0xf2f4f8);
         }
+        // Drift sparks: blue while the boost meter fills, turning hot orange near full.
+        if (sliding && car.drifting && car.speed > 15 && Math.random() < 0.7) {
+          const hot = car.boost > 0.85 ? 0xff5cf0 : car.boost > 0.5 ? 0xffa02e : 0x4fc8ff;
+          this.glow.spawn(wx, 0.25, wz, car.vx * 0.25 + j() * 4, 2 + Math.random() * 4, car.vy * 0.25 + j() * 4,
+            0.2 + Math.random() * 0.25, 0.2, 0, hot, 22);
+        }
         if (car.offroad && car.speed > 8 && !car.airborne && Math.random() < 0.5) {
-          this.spawn(wx, 0.3, wz, car.vx * 0.2 + j() * 2, 2 + Math.random() * 3, car.vy * 0.2 + j() * 2,
+          this.smoke.spawn(wx, 0.3, wz, car.vx * 0.2 + j() * 2, 2 + Math.random() * 3, car.vy * 0.2 + j() * 2,
             0.35 + Math.random() * 0.25, 0.5, 0.8, this.dirt[Math.random() < 0.5 ? 0 : 1]);
         }
         // Battered cars trail smoke, then flames, from under the bonnet.
         if (car.health < 0.7 && Math.random() < (1 - car.health) * 0.45) {
           const fire = car.health < 0.3 && Math.random() < 0.5;
-          this.spawn(car.x + ch * 1.2 + j() * 0.3, 1.2, car.y + sh * 1.2 + j() * 0.3,
-            car.vx * 0.3 + j(), 3 + Math.random() * 2, car.vy * 0.3 + j(),
-            fire ? 0.3 : 0.7 + Math.random() * 0.4, fire ? 0.7 : 0.6, fire ? 0.6 : 2.2,
-            fire ? 0xff8a1f : car.health < 0.4 ? 0x3c3c46 : 0x8d8f99);
+          const fx = car.x + ch * 1.2 + j() * 0.3;
+          const fz = car.y + sh * 1.2 + j() * 0.3;
+          if (fire) {
+            this.glow.spawn(fx, 1.2, fz, car.vx * 0.3 + j(), 3 + Math.random() * 2, car.vy * 0.3 + j(),
+              0.3, 0.7, 0.4, 0xff8a1f);
+          } else {
+            this.smoke.spawn(fx, 1.2, fz, car.vx * 0.3 + j(), 3 + Math.random() * 2, car.vy * 0.3 + j(),
+              0.7 + Math.random() * 0.4, 0.6, 2.2, car.health < 0.4 ? 0x3c3c46 : 0x8d8f99);
+          }
         }
-        if (car.boosting) {
+        if (car.boosting || car.pad > 0) {
           const bx = car.x - ch * 2.3;
           const bz = car.y - sh * 2.3;
-          this.spawn(bx + j() * 0.3, 0.8, bz + j() * 0.3, car.vx - ch * 14, j(), car.vy - sh * 14,
-            0.16 + Math.random() * 0.12, 0.9, -2, Math.random() < 0.4 ? 0xfff2a0 : 0xff7a1a);
+          const pad = !car.boosting;
+          for (let k = 0; k < 2; k++) {
+            this.glow.spawn(bx + j() * 0.35, 0.8 + j() * 0.15, bz + j() * 0.35, car.vx - ch * 16, j(),
+              car.vy - sh * 16, 0.16 + Math.random() * 0.14, 1.0, -2.2,
+              pad ? (k ? 0x7fe9ff : 0x2f9bff) : k ? 0xfff2a0 : 0xff6a1a);
+          }
+        }
+        // A shielded car sheds little cyan motes.
+        if (car.shield > 0 && Math.random() < 0.35) {
+          const a = Math.random() * Math.PI * 2;
+          this.glow.spawn(car.x + Math.cos(a) * 2.4, 0.5 + Math.random() * 2, car.y + Math.sin(a) * 2.4,
+            car.vx * 0.8, 1.5, car.vy * 0.8, 0.35, 0.2, -0.1, 0x7ff0ff);
         }
       }
       this.emitDebt.set(car, debt);
     }
 
-    for (let i = 0; i < MAX_PARTICLES; i++) {
-      const p = this.particles[i];
-      if (p.life <= 0) continue;
-      p.life -= dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.z += p.vz * dt;
-      p.vx *= 1 - 2 * dt;
-      p.vz *= 1 - 2 * dt;
-      const t = 1 - Math.max(0, p.life) / p.maxLife;
-      // Swell with age, then shrink away over the final third.
-      const fade = t > 0.66 ? (1 - t) / 0.34 : 1;
-      const s = p.life <= 0 ? 0 : Math.max(0, p.size + p.grow * t) * fade;
-      this.dummy.position.set(p.x, Math.max(0.2, p.y), p.z);
-      this.dummy.scale.setScalar(s);
-      this.dummy.updateMatrix();
-      this.mesh.setMatrixAt(i, this.dummy.matrix);
-    }
-    this.mesh.instanceMatrix.needsUpdate = true;
+    this.smoke.update(dt);
+    this.glow.update(dt);
     this.skidGeo.attributes.position.needsUpdate = true;
     this.skidGeo.setDrawRange(0, this.skidCount * 6);
   }
@@ -220,9 +327,7 @@ export class Effects {
   clear(): void {
     this.skidCount = this.skidNext = 0;
     this.lastWheel.clear();
-    for (const p of this.particles) p.life = 0;
-    this.dummy.scale.setScalar(0);
-    this.dummy.updateMatrix();
-    for (let i = 0; i < MAX_PARTICLES; i++) this.mesh.setMatrixAt(i, this.dummy.matrix);
+    this.smoke.clear();
+    this.glow.clear();
   }
 }

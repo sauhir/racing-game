@@ -20,6 +20,7 @@ import { THEMES } from './render/themes';
 import { buildTrackScene, type TrackScene } from './render/trackMesh';
 import { NO_INPUT, type CarStats } from './sim/car';
 import { Race, type RaceEvent } from './sim/race';
+import { WEAPON } from './sim/weapons';
 import { Track, type TrackDef } from './sim/track';
 import { generateTrack } from './sim/trackGen';
 import { Hud, formatTime, ordinal, type MenuItem } from './ui/hud';
@@ -60,6 +61,7 @@ class Game {
   private lapStart = 0;
   private bestLap = 0;
   private resultsDelay = 0;
+  private wasBoosting = false;
 
   // Career state.
   private mode: 'quick' | 'career' = 'quick';
@@ -515,16 +517,26 @@ class Game {
           break;
         case 'land':
           this.effects.landing(e.car);
+          this.worldItems?.pulse(e.car.x, e.car.y, 0xffffff, 5, 0.3);
           if (e.car === player) {
             this.audio.land();
             this.chase.addShake(0.35);
           }
           break;
         case 'pad':
-          if (e.car === player) this.audio.nitro();
+          this.effects.ringBurst(e.car.x, e.car.y, 0x4fd8ff, 14, 20);
+          this.worldItems?.pulse(e.car.x, e.car.y, 0x4fd8ff, 6, 0.35);
+          if (e.car === player) {
+            this.audio.nitro();
+            this.hud.flash('boost', 0.8);
+          }
           break;
         case 'pickup':
+          this.effects.pickup(e.x, e.y);
+          this.worldItems?.pulse(e.x, e.y, 0xffe14a, 8, 0.45, 0.5);
           if (e.car !== player) break;
+          this.hud.flash('pickup', 0.8);
+          this.chase.addShake(0.25);
           if (e.prize === 'repair') {
             this.audio.repair();
             this.hud.say('REPAIRED', 1.2, 'small');
@@ -533,6 +545,15 @@ class Game {
           }
           break;
         case 'item':
+          if (e.item === 'shield') {
+            this.worldItems?.pulse(e.car.x, e.car.y, 0x6ff0ff, 6, 0.4, 0.5);
+            this.effects.ringBurst(e.car.x, e.car.y, 0x6ff0ff, 9, 24);
+          } else if (e.item === 'nitro') {
+            this.effects.ringBurst(e.car.x, e.car.y, 0xffc23c, 12, 24);
+            if (e.car === player) this.hud.flash('boost', 1);
+          } else if (e.item === 'missile') {
+            this.worldItems?.pulse(e.car.x, e.car.y, 0xff8a2e, 5, 0.3, 0.8);
+          }
           if (e.item === 'missile') this.audio.launch(e.car === player ? 1 : near(e.car.x, e.car.y) * 0.7);
           else if (e.car !== player) break;
           else if (e.item === 'shield') this.audio.shieldUp();
@@ -542,12 +563,17 @@ class Game {
         case 'explosion': {
           const n = near(e.x, e.y);
           this.effects.explosion(e.x, e.y);
+          this.worldItems?.pulse(e.x, e.y, 0xffa02e, 13, 0.55, 0.8);
+          this.worldItems?.pulse(e.x, e.y, 0xffffff, 7, 0.25, 0.8);
+          if (n > 0.35) this.hud.flash('boom', n * n, 0.5);
           this.audio.explosion(n);
           this.chase.addShake(n * n * 1.2);
           break;
         }
         case 'shockwave':
-          this.worldItems?.shockwave(e.x, e.y);
+          this.worldItems?.pulse(e.x, e.y, 0xb78bff, WEAPON.shockRadius, 0.5, 0.35);
+          this.worldItems?.pulse(e.x, e.y, 0xffffff, WEAPON.shockRadius * 0.7, 0.35);
+          this.effects.ringBurst(e.x, e.y, 0xc9a2ff, 26, 48);
           this.audio.shockwave(near(e.x, e.y));
           break;
         case 'oiled':
@@ -557,12 +583,18 @@ class Game {
           }
           break;
         case 'struck':
+          if (e.result === 'blocked') {
+            this.worldItems?.pulse(e.car.x, e.car.y, 0x6ff0ff, 10, 0.4, 0.7);
+            this.effects.ringBurst(e.car.x, e.car.y, 0x9ff6ff, 18, 40);
+          }
           if (e.car === player) {
             if (e.result === 'blocked') {
               this.audio.shieldPop();
               this.hud.say('BLOCKED!', 1, 'small');
+              this.hud.flash('shield', 0.8);
             } else {
               this.chase.addShake(0.6);
+              this.hud.flash('hit', 0.9, 0.6);
             }
           } else if (e.by === player && e.result !== 'none') {
             this.hud.say(
@@ -571,6 +603,7 @@ class Game {
           }
           break;
         case 'wreck':
+          this.worldItems?.pulse(e.car.x, e.car.y, 0xff5a1a, 18, 0.7, 1);
           if (e.car === player) this.hud.say('WRECKED!', 1.8, 'warn');
           break;
         case 'count':
@@ -594,6 +627,7 @@ class Game {
             this.lapStart = this.race.time;
             if (this.bestLap === 0 || lapTime < this.bestLap) this.bestLap = lapTime;
             this.audio.lap();
+            this.hud.flash('gold', 0.7, 0.7);
             this.hud.say(
               player.lap === this.race.laps ? 'FINAL LAP!' : `LAP ${player.lap}  ·  ${formatTime(lapTime)}`,
               2, 'small',
@@ -606,6 +640,8 @@ class Game {
             if (this.bestLap === 0 || lapTime < this.bestLap) this.bestLap = lapTime;
             const place = this.race.placeOf(player);
             this.audio.finish(place <= 3);
+            this.hud.flash('pickup', 1, 0.9);
+            for (let k = 0; k < 4; k++) this.effects.pickup(player.x + (k % 2 ? 4 : -4), player.y + (k < 2 ? 4 : -4));
             this.hud.say(place === 1 ? 'WINNER!' : 'FINISH!', 2.5);
             this.resultsDelay = 2.5;
             if (this.mode === 'career' && this.save.progress) {
@@ -638,6 +674,12 @@ class Game {
         this.accumulator -= STEP;
         const player = this.race.player;
         this.handleEvents(this.race.step(STEP, player.finished ? NO_INPUT : this.input.car()));
+        // Waiting boxes twinkle.
+        this.race.boxes.forEach((box, i) => {
+          if (box.respawn === 0 && Math.random() < 0.22) this.effects.sparkle(box.x, box.y, i + Math.floor(this.clock * 3));
+        });
+        if (player.boosting && !this.wasBoosting) this.hud.flash('boost', 0.7);
+        this.wasBoosting = player.boosting;
         this.effects.update(this.race.cars, this.race.weapons.missiles, STEP);
       }
 

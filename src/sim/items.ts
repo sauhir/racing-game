@@ -21,9 +21,10 @@ export interface PickupBox {
   respawn: number;
 }
 
-/** Short, so the back of a tight pack still finds boxes waiting. */
-export const BOX_RESPAWN = 1.2;
-export const BOX_RADIUS = 2.1;
+/** Very short, so even the last car of a tight pack finds boxes waiting. */
+export const BOX_RESPAWN = 0.5;
+/** Generous: with five boxes across the road, a row is very hard to miss. */
+export const BOX_RADIUS = 3.3;
 const BOX_LANES = [-0.7, -0.35, 0, 0.35, 0.7];
 
 /** Rows of mystery boxes across the road at the track's chosen spots. */
