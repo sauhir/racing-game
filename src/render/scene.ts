@@ -47,7 +47,7 @@ export class View {
     const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
     this.composer = new EffectComposer(this.renderer, target);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.6, 0.5, 1.0);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.45, 0.4, 1.0);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
 

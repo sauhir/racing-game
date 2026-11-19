@@ -676,7 +676,7 @@ class Game {
         this.handleEvents(this.race.step(STEP, player.finished ? NO_INPUT : this.input.car()));
         // Waiting boxes twinkle.
         this.race.boxes.forEach((box, i) => {
-          if (box.respawn === 0 && Math.random() < 0.22) this.effects.sparkle(box.x, box.y, i + Math.floor(this.clock * 3));
+          if (box.respawn === 0 && Math.random() < 0.12) this.effects.sparkle(box.x, box.y, i + Math.floor(this.clock * 3));
         });
         if (player.boosting && !this.wasBoosting) this.hud.flash('boost', 0.7);
         this.wasBoosting = player.boosting;

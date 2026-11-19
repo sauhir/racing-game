@@ -71,7 +71,7 @@ function boxMaterial(): THREE.ShaderMaterial {
         float sweep = smoothstep(0.12, 0.0, abs(fract((vUv.x - vUv.y) * 0.5 + time * 0.8 + vSeed) - 0.5));
         float rim = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.0);
         float pulse = 0.85 + 0.15 * sin(time * 6.0 + vSeed * 20.0);
-        vec3 col = base * (0.7 + 0.25 * pulse) + sweep * 0.6 + rim * vec3(0.5) + m * vec3(1.7);
+        vec3 col = base * (0.7 + 0.2 * pulse) + sweep * 0.45 + rim * vec3(0.4) + m * vec3(1.3);
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -96,7 +96,7 @@ function beamMaterial(): THREE.ShaderMaterial {
         float streaks = 0.65 + 0.35 * sin(vUv.x * 50.0 + time * 5.0 + vSeed * 9.0);
         float rise = 0.75 + 0.25 * sin(vUv.y * 14.0 - time * 7.0);
         vec3 col = mix(vec3(1.0), hue(vSeed + time * 0.35), 0.75);
-        gl_FragColor = vec4(col, fade * streaks * rise * 0.2);
+        gl_FragColor = vec4(col, fade * streaks * rise * 0.11);
       }
     `,
   });
@@ -122,9 +122,9 @@ function pulseMaterial(): THREE.ShaderMaterial {
       void main() {
         float r = length(vUv - 0.5) * 2.0;
         float ring = smoothstep(0.6, 0.93, r) * smoothstep(1.0, 0.95, r);
-        float disc = (1.0 - smoothstep(0.0, 1.0, r)) * fill * 0.4;
+        float disc = (1.0 - smoothstep(0.0, 1.0, r)) * fill * 0.22;
         float a = (ring + disc) * (1.0 - age) * (1.0 - age);
-        gl_FragColor = vec4(color * 1.3, a);
+        gl_FragColor = vec4(color, a);
       }
     `,
   });

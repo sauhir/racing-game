@@ -14,7 +14,13 @@ interface Particle {
   size: number; grow: number; gravity: number;
 }
 
-/** A fixed pool of instanced blobs. `glow` pools are additive and bloom brightly. */
+type PoolKind = 'smoke' | 'fire' | 'glow';
+
+/**
+ * A fixed pool of instanced blobs. 'smoke' is plain; 'fire' is brighter than
+ * white so it blooms, but opaque enough not to stack into a white-out; 'glow'
+ * is additive, for small sparks and confetti.
+ */
 class ParticlePool {
   readonly mesh: THREE.InstancedMesh;
   private readonly particles: Particle[] = [];
@@ -24,17 +30,18 @@ class ParticlePool {
 
   constructor(
     private readonly size: number,
-    private readonly glow: boolean,
+    private readonly kind: PoolKind,
   ) {
+    const glow = kind === 'glow';
     this.mesh = new THREE.InstancedMesh(
       new THREE.IcosahedronGeometry(0.5, glow ? 1 : 0),
       glow
         ? new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })
-        : new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.8, depthWrite: false }),
+        : new THREE.MeshBasicMaterial({ transparent: true, opacity: kind === 'fire' ? 0.9 : 0.8, depthWrite: false }),
       size,
     );
     this.mesh.frustumCulled = false;
-    this.mesh.renderOrder = glow ? 3 : 2;
+    this.mesh.renderOrder = glow ? 4 : kind === 'fire' ? 3 : 2;
     this.dummy.scale.setScalar(0);
     this.dummy.updateMatrix();
     for (let i = 0; i < size; i++) {
@@ -60,8 +67,8 @@ class ParticlePool {
     p.grow = grow;
     p.gravity = gravity;
     this.color.set(color);
-    // Glow colours are pushed past white so the bloom pass picks them up.
-    if (this.glow) this.color.multiplyScalar(1.5);
+    // Fire and glow colours are pushed past white so the bloom pass picks them up.
+    if (this.kind !== 'smoke') this.color.multiplyScalar(this.kind === 'fire' ? 1.9 : 1.5);
     this.mesh.setColorAt(i, this.color);
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
   }
@@ -108,8 +115,9 @@ class ParticlePool {
  */
 export class Effects {
   readonly group = new THREE.Group();
-  private readonly smoke = new ParticlePool(900, false);
-  private readonly glow = new ParticlePool(1800, true);
+  private readonly smoke = new ParticlePool(900, 'smoke');
+  private readonly fire = new ParticlePool(500, 'fire');
+  private readonly glow = new ParticlePool(1800, 'glow');
   /** Colours of the dirt kicked up off the road; set per track theme. */
   dirt: [number, number] = [0x8a6a42, 0x6fae4f];
 
@@ -131,7 +139,7 @@ export class Effects {
       }),
     );
     skids.frustumCulled = false;
-    this.group.add(skids, this.smoke.mesh, this.glow.mesh);
+    this.group.add(skids, this.smoke.mesh, this.fire.mesh, this.glow.mesh);
   }
 
   /** Sparks from a collision. */
@@ -147,10 +155,10 @@ export class Effects {
 
   /** Fireball, embers, smoke and sparks for missiles, mines and wrecked cars. */
   explosion(x: number, z: number): void {
-    for (let i = 0; i < 46; i++) {
+    for (let i = 0; i < 34; i++) {
       const a = Math.random() * Math.PI * 2;
       const v = Math.random() * 11;
-      this.glow.spawn(x, 0.8 + Math.random() * 1.5, z, Math.cos(a) * v, 2 + Math.random() * 9, Math.sin(a) * v,
+      this.fire.spawn(x, 0.8 + Math.random() * 1.5, z, Math.cos(a) * v, 2 + Math.random() * 9, Math.sin(a) * v,
         0.35 + Math.random() * 0.45, 1.3, 3.4, [0xfff2a0, 0xffb02e, 0xff5a1a][i % 3]);
     }
     for (let i = 0; i < 40; i++) {
@@ -236,7 +244,7 @@ export class Effects {
     for (const m of missiles) {
       const bx = m.x - Math.cos(m.heading) * 1.2;
       const bz = m.y - Math.sin(m.heading) * 1.2;
-      this.glow.spawn(bx, 1.1, bz, j(), 0.5, j(), 0.22 + Math.random() * 0.15, 0.8, -0.5,
+      this.fire.spawn(bx, 1.1, bz, j(), 0.5, j(), 0.22 + Math.random() * 0.15, 0.8, -0.5,
         Math.random() < 0.5 ? 0xffb02e : 0xfff2a0);
       this.smoke.spawn(bx, 1.1, bz, j() * 2, 0.8, j() * 2, 0.5 + Math.random() * 0.3, 0.5, 1.6, 0xf2f4f8);
     }
@@ -291,7 +299,7 @@ export class Effects {
           const fx = car.x + ch * 1.2 + j() * 0.3;
           const fz = car.y + sh * 1.2 + j() * 0.3;
           if (fire) {
-            this.glow.spawn(fx, 1.2, fz, car.vx * 0.3 + j(), 3 + Math.random() * 2, car.vy * 0.3 + j(),
+            this.fire.spawn(fx, 1.2, fz, car.vx * 0.3 + j(), 3 + Math.random() * 2, car.vy * 0.3 + j(),
               0.3, 0.7, 0.4, 0xff8a1f);
           } else {
             this.smoke.spawn(fx, 1.2, fz, car.vx * 0.3 + j(), 3 + Math.random() * 2, car.vy * 0.3 + j(),
@@ -303,7 +311,7 @@ export class Effects {
           const bz = car.y - sh * 2.3;
           const pad = !car.boosting;
           for (let k = 0; k < 2; k++) {
-            this.glow.spawn(bx + j() * 0.35, 0.8 + j() * 0.15, bz + j() * 0.35, car.vx - ch * 16, j(),
+            this.fire.spawn(bx + j() * 0.35, 0.8 + j() * 0.15, bz + j() * 0.35, car.vx - ch * 16, j(),
               car.vy - sh * 16, 0.16 + Math.random() * 0.14, 1.0, -2.2,
               pad ? (k ? 0x7fe9ff : 0x2f9bff) : k ? 0xfff2a0 : 0xff6a1a);
           }
@@ -319,6 +327,7 @@ export class Effects {
     }
 
     this.smoke.update(dt);
+    this.fire.update(dt);
     this.glow.update(dt);
     this.skidGeo.attributes.position.needsUpdate = true;
     this.skidGeo.setDrawRange(0, this.skidCount * 6);
@@ -328,6 +337,7 @@ export class Effects {
     this.skidCount = this.skidNext = 0;
     this.lastWheel.clear();
     this.smoke.clear();
+    this.fire.clear();
     this.glow.clear();
   }
 }
