@@ -165,7 +165,7 @@ export class WorldItems {
     this.beams = new THREE.InstancedMesh(beamGeo, this.beamMat, count);
     this.beams.frustumCulled = false;
     this.beams.renderOrder = 2;
-    this.boxes.layers.enable(GLOW_LAYER);
+    // Only the faint beams feed the glow. A big, bright box would bloom into a white blob.
     this.beams.layers.enable(GLOW_LAYER);
     this.group.add(this.boxes, this.beams);
 

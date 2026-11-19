@@ -80,13 +80,16 @@ export class View {
         'tDiffuse',
       ),
     );
-    this.glowComposer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.9, 0.45, 0));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.4, 0.35, 0);
+    this.glowComposer.addPass(bloom);
 
     this.composer = new EffectComposer(this.renderer, hdr());
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     const add = new ShaderPass(
       new THREE.ShaderMaterial({
-        uniforms: { tDiffuse: { value: null }, glow: { value: this.glowComposer.renderTarget2.texture } },
+        // The pass's own blur buffer holds the halo alone. Its final output also
+        // contains the glowing objects themselves, which would draw them twice.
+        uniforms: { tDiffuse: { value: null }, glow: { value: bloom.renderTargetsHorizontal[0].texture } },
         vertexShader: PASS_VERTEX,
         fragmentShader:
           'uniform sampler2D tDiffuse; uniform sampler2D glow; varying vec2 vUv;' +
