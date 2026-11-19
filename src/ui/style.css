@@ -1,0 +1,88 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #8fd3ff; }
+body {
+  font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  color: #fff;
+  user-select: none;
+}
+#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.hidden { display: none !important; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; font-weight: 900; font-style: italic; }
+#hud, .overlay { text-shadow: 0 3px 0 rgba(20, 30, 60, 0.55); }
+.hud-box { position: absolute; padding: 18px 24px; }
+.top-left { top: 0; left: 0; }
+.top-right { top: 0; right: 0; text-align: right; }
+.bottom-right { bottom: 0; right: 0; text-align: right; }
+
+#hud-place { font-size: 72px; line-height: 1; }
+#place-suffix { font-size: 32px; }
+#place-total { font-size: 26px; opacity: 0.8; margin-left: 6px; }
+#hud-lap { font-size: 26px; margin-top: 6px; }
+#hud-time { font-size: 36px; font-variant-numeric: tabular-nums; }
+#hud-best { font-size: 18px; opacity: 0.9; font-variant-numeric: tabular-nums; }
+#hud-speed { font-size: 56px; line-height: 1; font-variant-numeric: tabular-nums; }
+#hud-speed small { font-size: 18px; margin-left: 6px; }
+
+#boost-wrap {
+  position: relative; width: 240px; height: 26px; margin-top: 10px; margin-left: auto;
+  border: 3px solid #fff; border-radius: 14px; overflow: hidden;
+  background: rgba(20, 30, 60, 0.45); transform: skewX(-12deg);
+}
+#boost-bar {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #ffd23c, #ff7a1a);
+}
+#boost-bar.ready { background: linear-gradient(90deg, #6ff0ff, #2f9bff); }
+#boost-bar.firing { background: linear-gradient(90deg, #fff6a8, #ff4b2b); }
+#boost-wrap span {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 14px; letter-spacing: 2px; text-shadow: 0 1px 0 rgba(20, 30, 60, 0.7);
+}
+
+#minimap { position: absolute; left: 18px; bottom: 18px; width: 200px; height: 200px; }
+
+#message {
+  position: absolute; left: 0; right: 0; top: 24%; text-align: center;
+  font-size: 96px; letter-spacing: 2px; opacity: 0; transition: opacity 0.15s;
+}
+#message.show { opacity: 1; }
+#message.small { font-size: 52px; }
+#message.warn { color: #ffdf3c; }
+
+.overlay {
+  position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; text-align: center; padding: 24px;
+  background: radial-gradient(ellipse at center, rgba(20, 40, 90, 0.25), rgba(20, 40, 90, 0.6));
+}
+.overlay h1 {
+  font-size: clamp(64px, 12vw, 150px); line-height: 0.9; margin: 0; font-style: italic; font-weight: 900;
+  color: #ffd23c; -webkit-text-stroke: 3px #1d2a55; text-shadow: 0 8px 0 #1d2a55;
+  transform: rotate(-4deg);
+}
+.overlay h2 { font-size: 64px; margin: 0 0 16px; font-style: italic; font-weight: 900; color: #ffd23c; }
+.tag { font-size: 24px; font-weight: 700; margin: 34px 0 8px; }
+.prompt { font-size: 28px; font-weight: 800; animation: pulse 1.2s ease-in-out infinite; }
+.keys { display: flex; flex-direction: column; gap: 8px; font-size: 16px; font-weight: 600; margin-top: 12px; }
+kbd {
+  display: inline-block; min-width: 26px; padding: 2px 8px; margin: 0 2px; border-radius: 7px;
+  background: #fff; color: #1d2a55; font-family: inherit; font-style: normal; font-weight: 800;
+  text-shadow: none; box-shadow: 0 3px 0 #1d2a55;
+}
+@keyframes pulse { 50% { transform: scale(1.06); } }
+
+#results-table { border-collapse: collapse; font-size: 24px; font-weight: 800; min-width: min(460px, 90vw); }
+#results-table td { padding: 7px 14px; text-align: left; }
+#results-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+#results-table tr.me td { background: rgba(255, 210, 60, 0.9); color: #1d2a55; text-shadow: none; }
+#results-table tr.me td:first-child { border-radius: 10px 0 0 10px; }
+#results-table tr.me td:last-child { border-radius: 0 10px 10px 0; }
+#results-table .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; margin-right: 10px; border: 2px solid #fff; }
+
+@media (max-width: 720px) {
+  #hud-place { font-size: 48px; }
+  #hud-speed { font-size: 36px; }
+  #boost-wrap { width: 150px; }
+  #minimap { width: 130px; height: 130px; }
+  #message { font-size: 60px; }
+}

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pocket Drifters</title>
+    <link rel="stylesheet" href="./src/ui/style.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="hud" class="hidden">
+      <div class="hud-box top-left">
+        <div id="hud-place"><span id="place-num">6</span><span id="place-suffix">th</span><span id="place-total">/6</span></div>
+        <div id="hud-lap">LAP 1/3</div>
+      </div>
+      <div class="hud-box top-right">
+        <div id="hud-time">0:00.0</div>
+        <div id="hud-best"></div>
+      </div>
+      <canvas id="minimap" width="200" height="200"></canvas>
+      <div class="hud-box bottom-right">
+        <div id="hud-speed"><span id="speed-num">0</span><small>km/h</small></div>
+        <div id="boost-wrap"><div id="boost-bar"></div><span>BOOST</span></div>
+      </div>
+      <div id="message"></div>
+    </div>
+
+    <div id="title" class="overlay">
+      <h1>Pocket<br />Drifters</h1>
+      <p class="tag">Slide it. Boost it. Win it.</p>
+      <p class="prompt">Press <kbd>Enter</kbd> to race</p>
+      <div class="keys">
+        <span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive</span>
+        <span><kbd>Space</kbd> handbrake (drift to charge boost)</span>
+        <span><kbd>Shift</kbd> boost</span>
+        <span><kbd>R</kbd> reset car · <kbd>Esc</kbd> pause · <kbd>M</kbd> mute</span>
+      </div>
+    </div>
+
+    <div id="pause" class="overlay hidden">
+      <h2>Paused</h2>
+      <p class="prompt"><kbd>Esc</kbd> resume · <kbd>Enter</kbd> restart race</p>
+    </div>
+
+    <div id="results" class="overlay hidden">
+      <h2 id="results-title">Finished!</h2>
+      <table id="results-table"></table>
+      <p class="prompt">Press <kbd>Enter</kbd> to race again</p>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
