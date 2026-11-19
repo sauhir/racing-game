@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Car } from '../sim/car';
+import type { Missile } from '../sim/weapons';
 
 const MAX_PARTICLES = 700;
 const MAX_SKID_QUADS = 4000;
@@ -83,6 +84,23 @@ export class Effects {
     }
   }
 
+  /** Fireball, smoke and sparks for missiles, mines and wrecked cars. */
+  explosion(x: number, z: number): void {
+    for (let i = 0; i < 26; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = Math.random() * 9;
+      this.spawn(x, 0.8 + Math.random(), z, Math.cos(a) * v, 2 + Math.random() * 7, Math.sin(a) * v,
+        0.35 + Math.random() * 0.35, 1.2, 3.2, [0xfff2a0, 0xffb02e, 0xff6a1a][i % 3]);
+    }
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = 2 + Math.random() * 5;
+      this.spawn(x, 1.5, z, Math.cos(a) * v, 4 + Math.random() * 4, Math.sin(a) * v,
+        0.8 + Math.random() * 0.6, 1.4, 3.5, 0x4a4a55);
+    }
+    this.burst(x, z, 20);
+  }
+
   private addSkid(ax: number, az: number, bx: number, bz: number): void {
     const dx = bx - ax;
     const dz = bz - az;
@@ -102,8 +120,16 @@ export class Effects {
   }
 
   /** Emit from the cars' current state, then advance all particles. */
-  update(cars: readonly Car[], dt: number): void {
+  update(cars: readonly Car[], missiles: readonly Missile[], dt: number): void {
+    for (const m of missiles) {
+      this.spawn(m.x, 1.1, m.y, (Math.random() - 0.5) * 2, 0.5, (Math.random() - 0.5) * 2,
+        0.3 + Math.random() * 0.2, 0.5, 1.2, Math.random() < 0.3 ? 0xffb02e : 0xf2f4f8);
+    }
     for (const car of cars) {
+      if (car.wrecked > 0) {
+        this.lastWheel.set(car, null);
+        continue;
+      }
       const ch = Math.cos(car.heading);
       const sh = Math.sin(car.heading);
       const wheel = (side: number): [number, number] => [
@@ -138,6 +164,14 @@ export class Effects {
         if (car.offroad && car.speed > 8 && Math.random() < 0.5) {
           this.spawn(wx, 0.3, wz, car.vx * 0.2 + j() * 2, 2 + Math.random() * 3, car.vy * 0.2 + j() * 2,
             0.35 + Math.random() * 0.25, 0.5, 0.8, Math.random() < 0.5 ? 0x8a6a42 : 0x6fae4f);
+        }
+        // Battered cars trail smoke, then flames, from under the bonnet.
+        if (car.health < 0.7 && Math.random() < (1 - car.health) * 0.45) {
+          const fire = car.health < 0.3 && Math.random() < 0.5;
+          this.spawn(car.x + ch * 1.2 + j() * 0.3, 1.2, car.y + sh * 1.2 + j() * 0.3,
+            car.vx * 0.3 + j(), 3 + Math.random() * 2, car.vy * 0.3 + j(),
+            fire ? 0.3 : 0.7 + Math.random() * 0.4, fire ? 0.7 : 0.6, fire ? 0.6 : 2.2,
+            fire ? 0xff8a1f : car.health < 0.4 ? 0x3c3c46 : 0x8d8f99);
         }
         if (car.boosting) {
           const bx = car.x - ch * 2.3;

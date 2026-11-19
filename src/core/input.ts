@@ -2,18 +2,25 @@ import type { CarInput } from '../sim/car';
 
 const GAME_KEYS = new Set([
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD',
-  'ShiftLeft', 'ShiftRight', 'Enter', 'Escape', 'KeyR', 'KeyM', 'KeyP',
+  'ShiftLeft', 'ShiftRight', 'KeyE', 'KeyX', 'ControlLeft', 'ControlRight', 'Enter', 'Escape', 'KeyR', 'KeyM', 'KeyP',
 ]);
+
+const ITEM_KEYS = ['KeyE', 'KeyX', 'ControlLeft', 'ControlRight'];
 
 /** Keyboard state: held keys for driving, plus one-shot presses for menu actions. */
 export class Input {
   private readonly down = new Set<string>();
   private readonly pressed = new Set<string>();
+  /** A quick tap of the item key is remembered until the simulation reads it. */
+  private itemTap = false;
 
   constructor(target: Window = window) {
     target.addEventListener('keydown', (e) => {
       if (GAME_KEYS.has(e.code)) e.preventDefault();
-      if (!e.repeat) this.pressed.add(e.code);
+      if (!e.repeat) {
+        this.pressed.add(e.code);
+        if (ITEM_KEYS.includes(e.code)) this.itemTap = true;
+      }
       this.down.add(e.code);
     });
     target.addEventListener('keyup', (e) => this.down.delete(e.code));
@@ -36,12 +43,15 @@ export class Input {
   }
 
   car(): CarInput {
+    const useItem = this.itemTap || this.held(...ITEM_KEYS);
+    this.itemTap = false;
     return {
       throttle: this.held('ArrowUp', 'KeyW') ? 1 : 0,
       brake: this.held('ArrowDown', 'KeyS') ? 1 : 0,
       steer: (this.held('ArrowRight', 'KeyD') ? 1 : 0) - (this.held('ArrowLeft', 'KeyA') ? 1 : 0),
       handbrake: this.held('Space'),
       boost: this.held('ShiftLeft', 'ShiftRight'),
+      useItem,
     };
   }
 }

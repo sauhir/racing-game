@@ -1,4 +1,5 @@
 import { clamp, lerp } from '../core/math';
+import type { ItemType } from './items';
 
 export interface CarInput {
   /** 0..1 */
@@ -9,9 +10,11 @@ export interface CarInput {
   steer: number;
   handbrake: boolean;
   boost: boolean;
+  /** Fires the held item on the press (edge), not while held. */
+  useItem: boolean;
 }
 
-export const NO_INPUT: CarInput = { throttle: 0, brake: 0, steer: 0, handbrake: false, boost: false };
+export const NO_INPUT: CarInput = { throttle: 0, brake: 0, steer: 0, handbrake: false, boost: false, useItem: false };
 
 /** Every handling tunable in one place. Units are metres and seconds. */
 export const TUNING = {
@@ -81,6 +84,24 @@ export class Car {
   slide = 0;
   throttle = 0;
 
+  /** 0..1; at zero the car is wrecked and respawns. */
+  health = 1;
+  item: ItemType | null = null;
+  usePrev = false;
+  /** Seconds of shield bubble left. */
+  shield = 0;
+  /** Seconds left of an uncontrolled spin-out. */
+  spin = 0;
+  /** Yaw rate of the spin, chosen so it ends facing spinHome (the original heading). */
+  spinRate = 0;
+  spinHome = 0;
+  /** Seconds left sliding on oil. */
+  oiled = 0;
+  /** Seconds until a wrecked car respawns (0 = alive). */
+  wrecked = 0;
+  /** Seconds of post-respawn immunity left. */
+  invulnerable = 0;
+
   /** Multiplier on top speed (CPU skill and rubber-banding). */
   speedScale = 1;
 
@@ -118,6 +139,7 @@ export class Car {
     this.vx = this.vy = this.angVel = 0;
     this.drifting = this.boosting = false;
     this.slide = 0;
+    this.spin = this.oiled = 0;
   }
 
   step(inp: CarInput, dt: number): void {
@@ -126,6 +148,16 @@ export class Car {
     this.prevX = this.x;
     this.prevY = this.y;
     this.prevHeading = this.heading;
+
+    if (this.wrecked > 0) return;
+    this.shield = Math.max(0, this.shield - dt);
+    this.oiled = Math.max(0, this.oiled - dt);
+    this.invulnerable = Math.max(0, this.invulnerable - dt);
+    const spinning = this.spin > 0;
+    if (spinning) {
+      this.spin = Math.max(0, this.spin - dt);
+      inp = NO_INPUT;
+    }
 
     const ch = Math.cos(this.heading);
     const sh = Math.sin(this.heading);
@@ -142,7 +174,8 @@ export class Car {
       this.boosting = false;
     }
 
-    let top = st.maxSpeed * this.speedScale;
+    // Damage costs up to 12% of top speed.
+    let top = st.maxSpeed * this.speedScale * (0.88 + 0.12 * this.health);
     let acc = st.accel;
     if (this.boosting) {
       top *= T.boostSpeed;
@@ -165,7 +198,7 @@ export class Car {
     if (throttle === 0 && brake === 0) vf -= vf * T.coastDrag * dt;
 
     // Steering: yaw rate fades in from standstill and eases off at speed.
-    const steer = clamp(inp.steer, -1, 1);
+    const steer = clamp(inp.steer, -1, 1) * (this.oiled > 0 ? 0.35 : 1);
     const speedFactor =
       clamp(Math.abs(vf) / 6, 0, 1) * lerp(1, T.highSpeedTurn, clamp(Math.abs(vf) / st.maxSpeed, 0, 1));
     let yawTarget = steer * st.turnRate * speedFactor * (vf < 0 ? -1 : 1);
@@ -176,6 +209,12 @@ export class Car {
     } else if (!handbrake && Math.abs(vl) < T.driftExitSlip) {
       this.drifting = false;
     }
+    if (this.oiled > 0) {
+      // On oil the tyres let go and the car snakes about.
+      this.drifting = true;
+      yawTarget += Math.sin(this.oiled * 11) * 1.3 * speedFactor;
+    }
+    if (spinning) this.drifting = true;
     if (this.drifting) {
       yawTarget *= T.driftTurnBonus;
       // Steering deeper into the slide fades out near the maximum slip angle, so
@@ -188,6 +227,10 @@ export class Car {
     if (handbrake) vf -= vf * T.handbrakeDrag * dt;
 
     this.angVel += (yawTarget - this.angVel) * Math.min(1, T.steerResponse * dt);
+    if (spinning) {
+      this.angVel = this.spinRate;
+      vf -= vf * 1.2 * dt;
+    }
     this.heading += this.angVel * dt;
 
     // Tyres: sideways velocity bleeds away quickly with grip, slowly in a drift.
@@ -200,7 +243,8 @@ export class Car {
 
     this.slide = clamp((Math.abs(vl) - 2) / 10, 0, 1);
     // Only real, moving drifts charge boost; no farming it with donuts.
-    if (this.drifting && Math.abs(vl) > 3 && speedBefore > T.boostChargeMinSpeed && !this.offroad) {
+    if (this.drifting && Math.abs(vl) > 3 && speedBefore > T.boostChargeMinSpeed && !this.offroad
+      && this.spin <= 0 && this.oiled <= 0) {
       this.boost = Math.min(1, this.boost + T.boostCharge * clamp(Math.abs(vl) / 12, 0.3, 1) * dt);
     }
 

@@ -150,6 +150,72 @@ export class GameAudio {
     this.tone(110, 0.18, 'sine', vol, 0, 40);
   }
 
+  private noiseBurst(dur: number, vol: number, type: BiquadFilterType, from: number, to: number): void {
+    const ctx = this.ctx;
+    if (!ctx || vol <= 0.005) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const filter = ctx.createBiquadFilter();
+    filter.type = type;
+    filter.frequency.setValueAtTime(from, t);
+    filter.frequency.exponentialRampToValueAtTime(to, t + dur);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(vol, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(filter).connect(gain).connect(this.master);
+    src.start(t, Math.random());
+    src.stop(t + dur + 0.05);
+  }
+
+  pickup(): void {
+    [784, 988, 1175, 1568].forEach((n, i) => this.tone(n, 0.09, 'square', 0.09, i * 0.05));
+  }
+
+  repair(): void {
+    [523, 659, 784].forEach((n, i) => this.tone(n, 0.16, 'triangle', 0.2, i * 0.09));
+  }
+
+  drop(): void {
+    this.tone(300, 0.14, 'triangle', 0.2, 0, 140);
+  }
+
+  launch(vol: number): void {
+    this.noiseBurst(0.5, 0.3 * vol, 'bandpass', 600, 4000);
+    this.tone(220, 0.35, 'sawtooth', 0.08 * vol, 0, 880);
+  }
+
+  explosion(vol: number): void {
+    if (vol <= 0.02) return;
+    this.noiseBurst(0.7, 0.6 * vol, 'lowpass', 2400, 120);
+    this.tone(120, 0.5, 'sine', 0.6 * vol, 0, 30);
+  }
+
+  shieldUp(): void {
+    this.tone(330, 0.35, 'sine', 0.2, 0, 990);
+    this.tone(495, 0.35, 'sine', 0.12, 0.05, 1480);
+  }
+
+  shieldPop(): void {
+    this.tone(1760, 0.25, 'triangle', 0.25, 0, 440);
+    this.noiseBurst(0.15, 0.2, 'highpass', 3000, 6000);
+  }
+
+  oil(): void {
+    this.tone(180, 0.4, 'sawtooth', 0.12, 0, 60);
+    this.noiseBurst(0.3, 0.15, 'lowpass', 900, 200);
+  }
+
+  shockwave(vol: number): void {
+    if (vol <= 0.02) return;
+    this.tone(400, 0.5, 'sine', 0.5 * vol, 0, 40);
+    this.noiseBurst(0.45, 0.25 * vol, 'bandpass', 2000, 200);
+  }
+
+  nitro(): void {
+    this.tone(260, 0.3, 'sawtooth', 0.1, 0, 1040);
+  }
+
   lap(): void {
     this.tone(660, 0.12, 'triangle', 0.18);
     this.tone(990, 0.2, 'triangle', 0.18, 0.11);

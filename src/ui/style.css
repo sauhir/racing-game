@@ -24,7 +24,7 @@ body {
 #hud-speed { font-size: 56px; line-height: 1; font-variant-numeric: tabular-nums; }
 #hud-speed small { font-size: 18px; margin-left: 6px; }
 
-#boost-wrap {
+#boost-wrap, #health-wrap {
   position: relative; width: 240px; height: 26px; margin-top: 10px; margin-left: auto;
   border: 3px solid #fff; border-radius: 14px; overflow: hidden;
   background: rgba(20, 30, 60, 0.45); transform: skewX(-12deg);
@@ -35,7 +35,26 @@ body {
 }
 #boost-bar.ready { background: linear-gradient(90deg, #6ff0ff, #2f9bff); }
 #boost-bar.firing { background: linear-gradient(90deg, #fff6a8, #ff4b2b); }
-#boost-wrap span {
+#health-wrap { height: 20px; }
+#health-bar { height: 100%; width: 100%; background: linear-gradient(90deg, #35c46a, #9be36a); }
+#health-bar.low { background: linear-gradient(90deg, #ff3b30, #ff8a1f); }
+#health-bar.mid { background: linear-gradient(90deg, #ffb02e, #ffd23c); }
+#item-slot {
+  position: absolute; right: 300px; bottom: 24px; width: 104px; height: 104px;
+  border: 4px solid #fff; border-radius: 26px; background: rgba(20, 30, 60, 0.45);
+  display: flex; align-items: center; justify-content: center;
+}
+#item-slot kbd { position: absolute; right: -14px; bottom: -10px; font-size: 16px; opacity: 0.35; }
+#item-slot.has kbd { opacity: 1; }
+#item-slot.has { background: rgba(255, 255, 255, 0.28); animation: pop 0.3s ease-out; }
+#item-icon { width: 72px; height: 72px; }
+#item-icon svg { width: 100%; height: 100%; filter: drop-shadow(0 3px 0 rgba(20, 30, 60, 0.5)); }
+#item-name {
+  position: absolute; left: -60px; right: -60px; top: -30px; text-align: center; font-size: 18px;
+  letter-spacing: 1px; text-transform: uppercase;
+}
+@keyframes pop { 0% { transform: scale(1.5) rotate(-10deg); } 100% { transform: scale(1); } }
+#boost-wrap span, #health-wrap span {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: 14px; letter-spacing: 2px; text-shadow: 0 1px 0 rgba(20, 30, 60, 0.7);
 }
@@ -82,7 +101,9 @@ kbd {
 @media (max-width: 720px) {
   #hud-place { font-size: 48px; }
   #hud-speed { font-size: 36px; }
-  #boost-wrap { width: 150px; }
+  #boost-wrap, #health-wrap { width: 150px; }
+  #item-slot { width: 72px; height: 72px; right: 190px; }
+  #item-icon { width: 48px; height: 48px; }
   #minimap { width: 130px; height: 130px; }
   #message { font-size: 60px; }
 }

@@ -1,11 +1,12 @@
 import { GameAudio } from './audio/audio';
 import { Input } from './core/input';
-import { lerpAngle } from './core/math';
+import { clamp, lerpAngle } from './core/math';
 import { PLAYER_COLOR, RIVALS } from './data/rivals';
 import { MEADOW } from './data/tracks/meadow';
 import { ChaseCamera } from './render/camera';
 import { CarMesh } from './render/carMesh';
 import { Effects } from './render/effects';
+import { WorldItems } from './render/pickups';
 import { View } from './render/scene';
 import { buildTrackScene } from './render/trackMesh';
 import { NO_INPUT } from './sim/car';
@@ -27,6 +28,7 @@ class Game {
   private readonly chase = new ChaseCamera(this.view.camera);
   private readonly effects = new Effects();
   private carMeshes: CarMesh[] = [];
+  private worldItems: WorldItems | null = null;
   private race!: Race;
   private screen: Screen = 'title';
   private accumulator = 0;
@@ -50,6 +52,10 @@ class Game {
     this.race = new Race(this.track, {
       laps: LAPS, playerName: 'You', playerColor: PLAYER_COLOR, rivals: RIVALS, seed: this.seed++,
     });
+    if (!this.worldItems) {
+      this.worldItems = new WorldItems(this.race.boxes.length);
+      this.view.scene.add(this.worldItems.group);
+    }
     this.carMeshes = this.race.cars.map((car) => new CarMesh(car));
     for (const m of this.carMeshes) this.view.scene.add(m.root);
     this.effects.clear();
@@ -110,8 +116,58 @@ class Game {
 
   private handleEvents(events: RaceEvent[]): void {
     const player = this.race.player;
+    // How loud something at (x, y) is from the player's seat.
+    const near = (x: number, y: number): number => clamp(1 - Math.hypot(x - player.x, y - player.y) / 110, 0, 1);
     for (const e of events) {
       switch (e.type) {
+        case 'pickup':
+          if (e.car !== player) break;
+          if (e.prize === 'repair') {
+            this.audio.repair();
+            this.hud.say('REPAIRED', 1.2, 'small');
+          } else {
+            this.audio.pickup();
+          }
+          break;
+        case 'item':
+          if (e.item === 'missile') this.audio.launch(e.car === player ? 1 : near(e.car.x, e.car.y) * 0.7);
+          else if (e.car !== player) break;
+          else if (e.item === 'shield') this.audio.shieldUp();
+          else if (e.item === 'nitro') this.audio.nitro();
+          else if (e.item !== 'shockwave') this.audio.drop();
+          break;
+        case 'explosion': {
+          const n = near(e.x, e.y);
+          this.effects.explosion(e.x, e.y);
+          this.audio.explosion(n);
+          this.chase.addShake(n * n * 1.2);
+          break;
+        }
+        case 'shockwave':
+          this.worldItems?.shockwave(e.x, e.y);
+          this.audio.shockwave(near(e.x, e.y));
+          break;
+        case 'oiled':
+          if (e.car === player) {
+            this.audio.oil();
+            this.hud.say('OIL!', 1, 'small warn');
+          }
+          break;
+        case 'struck':
+          if (e.car === player) {
+            if (e.result === 'blocked') {
+              this.audio.shieldPop();
+              this.hud.say('BLOCKED!', 1, 'small');
+            } else {
+              this.chase.addShake(0.6);
+            }
+          } else if (e.by === player && e.result !== 'none') {
+            this.hud.say(e.result === 'blocked' ? `${e.car.name} BLOCKED IT` : `GOT ${e.car.name.toUpperCase()}!`, 1.2, 'small');
+          }
+          break;
+        case 'wreck':
+          if (e.car === player) this.hud.say('WRECKED!', 1.8, 'warn');
+          break;
         case 'count':
           this.hud.say(String(e.n), 0.9);
           this.audio.beep(false);
@@ -170,7 +226,7 @@ class Game {
         this.accumulator -= STEP;
         const player = this.race.player;
         this.handleEvents(this.race.step(STEP, player.finished ? NO_INPUT : this.input.car()));
-        this.effects.update(this.race.cars, STEP);
+        this.effects.update(this.race.cars, this.race.weapons.missiles, STEP);
       }
 
       if (this.screen === 'race') {
@@ -191,7 +247,9 @@ class Game {
     this.input.endFrame();
 
     const alpha = running ? this.accumulator / STEP : 1;
-    for (const m of this.carMeshes) m.update(alpha, running ? dt : 0);
+    for (const m of this.carMeshes) m.update(alpha, running ? dt : 0, this.clock);
+
+    this.worldItems?.update(this.race, this.clock, alpha, running ? dt : 0);
 
     const p = this.race.player;
     const px = p.prevX + (p.x - p.prevX) * alpha;

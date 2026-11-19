@@ -1,4 +1,5 @@
 import type { Car } from '../sim/car';
+import { ITEM_NAMES, type ItemType } from '../sim/items';
 import type { Race } from '../sim/race';
 import type { Track } from '../sim/track';
 
@@ -15,6 +16,34 @@ export function ordinal(n: number): string {
   return ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th';
 }
 
+const svg = (body: string): string => `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
+
+/** Hand-drawn icons for the item slot. */
+const ITEM_ICONS: Record<ItemType, string> = {
+  missile: svg(
+    '<path d="M8 40 14 26 30 10Q38 6 42 6 42 10 38 18L22 34Z" fill="#ff5a4d"/>' +
+      '<path d="M8 40 10 30 18 38Z" fill="#ffd23c"/><circle cx="33" cy="15" r="3.5" fill="#fff"/>',
+  ),
+  mine: svg(
+    '<path d="M24 5v8M24 39v5M5 26h7M36 26h7M10 12l6 6M38 12l-6 6M10 40l6-6M38 40l-6-6" stroke="#2c3040" ' +
+      'stroke-width="5" stroke-linecap="round"/><circle cx="24" cy="26" r="13" fill="#3f4558"/>' +
+      '<circle cx="24" cy="26" r="5" fill="#ff3b30"/>',
+  ),
+  oil: svg(
+    '<path d="M24 4S9 22 9 31a15 15 0 0 0 30 0C39 22 24 4 24 4Z" fill="#1d1b26"/>' +
+      '<path d="M16 31a8 8 0 0 0 6 8" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>',
+  ),
+  shield: svg(
+    '<path d="M24 4 41 10V24C41 34 33 41 24 44 15 41 7 34 7 24V10Z" fill="#35c9ee"/>' +
+      '<path d="M24 9 36 13.500V24C36 31 30 36.500 24 39Z" fill="#fff" opacity=".55"/>',
+  ),
+  shockwave: svg(
+    '<g fill="none" stroke="#b78bff" stroke-linecap="round"><circle cx="24" cy="24" r="12" stroke-width="5"/>' +
+      '<circle cx="24" cy="24" r="20" stroke-width="3" opacity=".65"/></g><circle cx="24" cy="24" r="5" fill="#fff"/>',
+  ),
+  nitro: svg('<path d="M28 3 10 27H22L19 45 38 19H26Z" fill="#ffd23c" stroke="#ff8a1f" stroke-width="2"/>'),
+};
+
 const hex = (c: number): string => '#' + c.toString(16).padStart(6, '0');
 
 /** DOM overlay: race HUD, minimap, big centre messages and the menu screens. */
@@ -28,6 +57,11 @@ export class Hud {
   private readonly best = $('hud-best');
   private readonly speed = $('speed-num');
   private readonly boostBar = $('boost-bar');
+  private readonly healthBar = $('health-bar');
+  private readonly itemSlot = $('item-slot');
+  private readonly itemIcon = $('item-icon');
+  private readonly itemName = $('item-name');
+  private shownItem: ItemType | null = null;
   private readonly message = $('message');
   private readonly title = $('title');
   private readonly pause = $('pause');
@@ -71,7 +105,7 @@ export class Hud {
   }
 
   /** Flash a centre-screen message. seconds = 0 keeps it until cleared. */
-  say(text: string, seconds: number, style: '' | 'small' | 'small warn' = ''): void {
+  say(text: string, seconds: number, style: '' | 'warn' | 'small' | 'small warn' = ''): void {
     this.message.textContent = text;
     this.message.className = `show ${style}`;
     this.messageTimer = seconds;
@@ -101,6 +135,20 @@ export class Hud {
     this.speed.textContent = String(Math.round(p.speed * 3.6));
     this.boostBar.style.width = `${Math.round(p.boost * 100)}%`;
     this.boostBar.className = p.boosting ? 'firing' : p.boost >= 0.15 ? 'ready' : '';
+
+    this.healthBar.style.width = `${Math.round(p.health * 100)}%`;
+    this.healthBar.className = p.health < 0.3 ? 'low' : p.health < 0.6 ? 'mid' : '';
+    if (p.item !== this.shownItem) {
+      this.shownItem = p.item;
+      // Icons are fixed strings defined above, never user input.
+      this.itemIcon.innerHTML = p.item ? ITEM_ICONS[p.item] : '';
+      this.itemName.textContent = p.item ? ITEM_NAMES[p.item] : '';
+      this.itemSlot.classList.remove('has');
+      if (p.item) {
+        void this.itemSlot.offsetWidth;
+        this.itemSlot.classList.add('has');
+      }
+    }
 
     if (!this.stickyMessage && this.messageTimer > 0) {
       this.messageTimer -= dt;

@@ -9,7 +9,7 @@ import { formatTime, ordinal } from '../src/ui/hud';
 const DT = 1 / 60;
 const track = new Track(MEADOW);
 const config = (over: Partial<RaceConfig> = {}): RaceConfig => ({
-  laps: 3, playerName: 'You', playerColor: PLAYER_COLOR, rivals: RIVALS, seed: 1, ...over,
+  laps: 3, playerName: 'You', playerColor: PLAYER_COLOR, rivals: RIVALS, seed: 1, combat: false, ...over,
 });
 
 describe('Race', () => {

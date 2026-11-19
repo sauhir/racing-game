@@ -1,10 +1,13 @@
 import { clamp } from '../core/math';
-import { makeRng } from '../core/rng';
+import { makeRng, type Rng } from '../core/rng';
 import type { Personality } from '../data/rivals';
 import { AIDriver } from './ai/driver';
 import { Car, NO_INPUT, type CarInput } from './car';
 import { collideCars, collideWall } from './collision';
+import { applyImpact, repair, RESPAWN_IMMUNITY } from './damage';
+import { BOX_RADIUS, BOX_RESPAWN, makeBoxes, rollPrize, type BoxPrize, type ItemType, type PickupBox } from './items';
 import type { Track } from './track';
+import { Weapons, type WeaponEvent } from './weapons';
 
 export type RaceEvent =
   | { type: 'count'; n: number }
@@ -12,7 +15,11 @@ export type RaceEvent =
   | { type: 'hit'; x: number; y: number; strength: number; player: boolean; wall: boolean }
   | { type: 'lap'; car: Car }
   | { type: 'finish'; car: Car }
-  | { type: 'respawn'; car: Car };
+  | { type: 'respawn'; car: Car }
+  | { type: 'pickup'; car: Car; prize: BoxPrize }
+  | { type: 'item'; car: Car; item: ItemType }
+  | { type: 'wreck'; car: Car }
+  | WeaponEvent;
 
 export type RacePhase = 'grid' | 'countdown' | 'racing';
 
@@ -26,13 +33,15 @@ export interface RaceConfig {
   rubberBand?: number;
   /** No human: the player's car gets a CPU driver too (demo and tests). */
   autopilot?: boolean;
+  /** Mystery boxes, weapons and damage. On unless set to false. */
+  combat?: boolean;
 }
 
 const GRID_GAP = 7;
 const GRID_LATERAL = 3.2;
 const COUNTDOWN = 3;
 const AUTOPILOT: Personality = {
-  name: 'Autopilot', color: 0, skill: 0.8, aggression: 0.5, errorRate: 0.02, drift: 0.6, boostAt: 0.5,
+  name: 'Autopilot', color: 0, skill: 0.8, aggression: 0.5, errorRate: 0.02, drift: 0.6, boostAt: 0.5, itemUse: 0.6,
 };
 
 export class Race {
@@ -50,6 +59,10 @@ export class Race {
   private readonly baseScale = new Map<Car, number>();
   private readonly rubberBand: number;
   private finishers = 0;
+  readonly combat: boolean;
+  readonly boxes: PickupBox[];
+  readonly weapons = new Weapons();
+  private readonly prizeRng: Rng;
 
   constructor(
     readonly track: Track,
@@ -58,6 +71,9 @@ export class Race {
     this.laps = config.laps;
     this.rubberBand = config.rubberBand ?? 0.06;
     const rng = makeRng(config.seed);
+    this.combat = config.combat ?? true;
+    this.boxes = this.combat ? makeBoxes(track) : [];
+    this.prizeRng = makeRng(config.seed * 7919 + 13);
 
     config.rivals.forEach((p, i) => {
       const car = new Car(i, p.name, p.color, false);
@@ -131,17 +147,38 @@ export class Race {
     this.time += dt;
     const track = this.track;
 
+    const world = this.combat ? { boxes: this.boxes, missiles: this.weapons.missiles } : undefined;
     for (const car of this.cars) {
+      if (car.wrecked > 0) {
+        car.step(NO_INPUT, dt);
+        car.wrecked -= dt;
+        if (car.wrecked <= 0) {
+          car.wrecked = 0;
+          this.respawn(car);
+          car.health = 1;
+          car.invulnerable = RESPAWN_IMMUNITY;
+          events.push({ type: 'respawn', car });
+        }
+        continue;
+      }
       const driver = this.drivers.get(car);
       let input = playerInput;
       if (driver) {
-        input = driver.update(car, track, this.cars, dt);
+        input = driver.update(car, track, this.cars, dt, world);
         let scale = this.baseScale.get(car) ?? 1;
         if (!car.isPlayer && !car.finished) {
           const gap = car.progress - this.player.progress;
           scale *= 1 - clamp(gap / 150, -1, 1) * this.rubberBand;
         }
         car.speedScale = car.finished ? 0.75 : scale;
+      }
+      // Fire on the press. A press made while spinning out is kept until it can fire.
+      if (!input.useItem) {
+        car.usePrev = false;
+      } else if (this.combat && !car.usePrev && car.item && car.spin <= 0 && !car.finished) {
+        const item = car.item;
+        car.usePrev = true;
+        events.push({ type: 'item', car, item }, ...this.weapons.use(car, this.cars, track));
       }
       car.step(input, dt);
     }
@@ -150,12 +187,16 @@ export class Race {
       for (let j = i + 1; j < this.cars.length; j++) {
         const a = this.cars[i];
         const b = this.cars[j];
+        if (a.wrecked > 0 || b.wrecked > 0) continue;
         const hit = collideCars(a, b);
         if (hit > 2) {
           events.push({
             type: 'hit', x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, strength: hit,
             player: a.isPlayer || b.isPlayer, wall: false,
           });
+          if (this.combat) {
+            for (const car of [a, b]) if (applyImpact(car, hit) === 'wreck') this.wreck(car, events);
+          }
         }
       }
     }
@@ -165,6 +206,7 @@ export class Race {
       this.updateProgress(car);
       const hit = collideWall(car, track);
       if (hit > 3) events.push({ type: 'hit', x: car.x, y: car.y, strength: hit, player: car.isPlayer, wall: true });
+      if (this.combat && applyImpact(car, hit) === 'wreck') this.wreck(car, events);
 
       if (car.lap > lapBefore && !car.finished) {
         if (car.lap > this.laps) {
@@ -179,7 +221,7 @@ export class Race {
       }
 
       // CPU cars that get wedged somewhere are put back on the road.
-      if (this.drivers.has(car)) {
+      if (this.drivers.has(car) && car.wrecked <= 0) {
         car.stuckTime = car.speed < 3 ? car.stuckTime + dt : 0;
         if (car.stuckTime > 2.5) {
           this.respawn(car);
@@ -188,12 +230,41 @@ export class Race {
       }
     }
 
+    if (this.combat) this.stepCombat(dt, events);
+
     const p = this.player;
     const s = track.samples[p.sampleIdx];
     const flow = p.vx * s.tx + p.vy * s.ty;
     this.wrongWay = flow < -4 && !p.finished ? this.wrongWay + dt : 0;
 
     return events;
+  }
+
+  private wreck(car: Car, events: RaceEvent[]): void {
+    events.push({ type: 'explosion', x: car.x, y: car.y }, { type: 'wreck', car });
+  }
+
+  private stepCombat(dt: number, events: RaceEvent[]): void {
+    for (const e of this.weapons.step(dt, this.cars, this.track)) {
+      events.push(e);
+      if (e.type === 'struck' && e.result === 'wreck') this.wreck(e.car, events);
+    }
+    for (const box of this.boxes) {
+      if (box.respawn > 0) {
+        box.respawn = Math.max(0, box.respawn - dt);
+        continue;
+      }
+      for (const car of this.cars) {
+        if (car.item || car.wrecked > 0 || car.finished) continue;
+        if ((car.x - box.x) ** 2 + (car.y - box.y) ** 2 > BOX_RADIUS * BOX_RADIUS) continue;
+        const prize = rollPrize(this.placeOf(car), this.cars.length, car.health, this.prizeRng);
+        if (prize === 'repair') repair(car);
+        else car.item = prize;
+        box.respawn = BOX_RESPAWN;
+        events.push({ type: 'pickup', car, prize });
+        break;
+      }
+    }
   }
 
   private updateProgress(car: Car): void {

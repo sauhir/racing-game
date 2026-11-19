@@ -2,7 +2,15 @@ import { clamp, wrapAngle } from '../../core/math';
 import type { Rng } from '../../core/rng';
 import type { Personality } from '../../data/rivals';
 import type { Car, CarInput } from '../car';
+import type { PickupBox } from '../items';
 import type { Track } from '../track';
+import type { Missile } from '../weapons';
+
+/** The parts of the combat state a CPU driver pays attention to. */
+export interface AIWorld {
+  boxes: readonly PickupBox[];
+  missiles: readonly Missile[];
+}
 
 const BRAKE_DECEL = 30;
 
@@ -17,13 +25,14 @@ export class AIDriver {
   private avoid = 0;
   private mistake = 0;
   private drifting = 0;
+  private itemHeld = 0;
 
   constructor(
     readonly personality: Personality,
     private readonly rng: Rng,
   ) {}
 
-  update(car: Car, track: Track, others: readonly Car[], dt: number): CarInput {
+  update(car: Car, track: Track, others: readonly Car[], dt: number, world?: AIWorld): CarInput {
     const p = this.personality;
     const sp = track.spacing;
     const speed = car.speed;
@@ -57,7 +66,9 @@ export class AIDriver {
     // Steer at a point on the racing line some way ahead.
     const look = 9 + speed * 0.42;
     const target = track.sample(car.sampleIdx + Math.round(look / sp));
-    const offset = clamp(target.line * (0.5 + 0.5 * p.skill) + this.wander + this.avoid, -maxOff, maxOff);
+    const box = world && !car.item && !car.finished ? this.boxAhead(car, track, world.boxes) : null;
+    const lane = box ?? target.line * (0.5 + 0.5 * p.skill) + this.wander;
+    const offset = clamp(lane + this.avoid * (box === null ? 1 : 0.4), -maxOff, maxOff);
     const want = Math.atan2(target.y + target.ny * offset - car.y, target.x + target.nx * offset - car.x);
     const diff = wrapAngle(want - car.heading);
     const steer = clamp(diff * 2.4, -1, 1);
@@ -87,6 +98,67 @@ export class AIDriver {
     const boost =
       (car.boosting || car.boost >= p.boostAt) && allowed > speed + 6 && Math.abs(diff) < 0.2 && !car.offroad;
 
-    return { throttle, brake, steer, handbrake, boost };
+    let useItem = false;
+    if (car.item && world) {
+      this.itemHeld += dt;
+      if (this.itemHeld > 0.6 + (1 - p.itemUse) * 2.5) {
+        useItem = this.wantsToUse(car, track, others, world, allowed > speed + 6 && Math.abs(diff) < 0.2);
+      }
+    } else {
+      this.itemHeld = 0;
+    }
+
+    return { throttle, brake, steer, handbrake, boost, useItem };
+  }
+
+  /** Lateral position of a mystery box coming up that is worth lining up for. */
+  private boxAhead(car: Car, track: Track, boxes: readonly PickupBox[]): number | null {
+    const s = track.samples[car.sampleIdx];
+    let best: number | null = null;
+    let bestShift = Infinity;
+    for (const b of boxes) {
+      if (b.respawn > 0.5) continue;
+      const dx = b.x - car.x;
+      const dy = b.y - car.y;
+      const ahead = dx * s.tx + dy * s.ty;
+      if (ahead < 10 || ahead > 60) continue;
+      const shift = dx * s.nx + dy * s.ny;
+      if (Math.abs(shift) < bestShift) {
+        bestShift = Math.abs(shift);
+        best = car.lat + shift;
+      }
+    }
+    return bestShift < 9 ? best : null;
+  }
+
+  private wantsToUse(car: Car, track: Track, others: readonly Car[], world: AIWorld, straight: boolean): boolean {
+    const gapTo = (o: Car): number => {
+      let gap = (o.progress - car.progress) % track.length;
+      if (gap > track.length / 2) gap -= track.length;
+      else if (gap < -track.length / 2) gap += track.length;
+      return gap;
+    };
+    const rivals = others.filter((o) => o !== car && o.wrecked <= 0 && !o.finished);
+    switch (car.item) {
+      case 'missile':
+        return this.itemHeld > 12 || rivals.some((o) => gapTo(o) > 10 && gapTo(o) < 140);
+      case 'mine':
+      case 'oil':
+        return (
+          this.itemHeld > 10 ||
+          rivals.some((o) => gapTo(o) < -4 && gapTo(o) > -24 && Math.abs(o.lat - car.lat) < 5)
+        );
+      case 'shockwave':
+        return rivals.some((o) => (o.x - car.x) ** 2 + (o.y - car.y) ** 2 < 100);
+      case 'shield':
+        return (
+          this.itemHeld > 4 + 8 * (1 - this.personality.itemUse) ||
+          world.missiles.some((m) => m.target === car && (m.x - car.x) ** 2 + (m.y - car.y) ** 2 < 70 * 70)
+        );
+      case 'nitro':
+        return straight && car.boost < 0.4;
+      default:
+        return false;
+    }
   }
 }

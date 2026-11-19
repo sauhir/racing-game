@@ -9,6 +9,8 @@ export interface TrackDef {
   verge: number;
   /** Closed loop of spline control points; the start line is at the first point. */
   points: [number, number][];
+  /** Where rows of mystery boxes sit, as fractions (0..1) of the lap. */
+  boxRows: number[];
 }
 
 export interface TrackSample {
