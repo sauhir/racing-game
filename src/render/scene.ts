@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { Quality } from '../core/settings';
 import type { Theme } from './themes';
 
 const SKY = 0x8fd3ff;
@@ -11,10 +12,10 @@ export class View {
   readonly camera = new THREE.PerspectiveCamera(48, 1, 1, 900);
   private readonly sun: THREE.DirectionalLight;
   private readonly hemi: THREE.HemisphereLight;
+  private quality: Quality = 'high';
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
@@ -53,9 +54,23 @@ export class View {
     this.hemi.intensity = t.hemiIntensity;
   }
 
+  /** Graphics quality: trades resolution and shadows for speed. */
+  setQuality(q: Quality): void {
+    this.quality = q;
+    const size = q === 'high' ? 2048 : 1024;
+    this.sun.castShadow = q !== 'low';
+    if (this.sun.shadow.mapSize.x !== size) {
+      this.sun.shadow.mapSize.set(size, size);
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
+    }
+    this.resize();
+  }
+
   resize(): void {
     const w = window.innerWidth;
     const h = window.innerHeight;
+    this.renderer.setPixelRatio(this.quality === 'high' ? Math.min(window.devicePixelRatio, 2) : 1);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     // Keep a useful view ahead on tall, narrow windows.

@@ -110,6 +110,7 @@ export class Hud {
   private mapOx = 0;
   private mapOy = 0;
   private messageTimer = 0;
+  private padHints = false;
   private stickyMessage = false;
 
   setTrack(track: Track): void {
@@ -139,6 +140,13 @@ export class Hud {
     this.pause.classList.toggle('hidden', screen !== 'pause');
     this.results.classList.toggle('hidden', screen !== 'results');
     this.hud.classList.toggle('hidden', screen === 'title' || screen === 'select' || screen === 'menu');
+  }
+
+  /** Reveals the controller instructions once a gamepad has been plugged in. */
+  showGamepadHints(seen: boolean): void {
+    if (seen === this.padHints) return;
+    this.padHints = seen;
+    for (const el of document.querySelectorAll('.pad-hint')) el.classList.toggle('hidden', !seen);
   }
 
   /** A generic list screen: main menu, career hub, garage and cup standings. */

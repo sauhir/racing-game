@@ -1,10 +1,15 @@
 import type { Car } from '../sim/car';
 import { Music } from './music';
+import type { SongId } from './songs';
 
 /** All sound is synthesised with WebAudio; there are no audio files. */
 export class GameAudio {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
+  private sfx!: GainNode;
+  private musicGain!: GainNode;
+  private musicVolume = 0.7;
+  private sfxVolume = 0.8;
   private engineOsc!: OscillatorNode;
   private engineSub!: OscillatorNode;
   private engineFilter!: BiquadFilterNode;
@@ -27,6 +32,12 @@ export class GameAudio {
     this.master = ctx.createGain();
     this.master.gain.value = this.muted ? 0 : 0.7;
     this.master.connect(ctx.destination);
+    this.sfx = ctx.createGain();
+    this.sfx.gain.value = this.sfxVolume;
+    this.sfx.connect(this.master);
+    this.musicGain = ctx.createGain();
+    this.musicGain.gain.value = this.musicVolume;
+    this.musicGain.connect(this.master);
 
     this.noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const data = this.noise.getChannelData(0);
@@ -43,13 +54,13 @@ export class GameAudio {
     this.engineGain.gain.value = 0;
     this.engineOsc.connect(this.engineFilter);
     this.engineSub.connect(this.engineFilter);
-    this.engineFilter.connect(this.engineGain).connect(this.master);
+    this.engineFilter.connect(this.engineGain).connect(this.sfx);
     this.engineOsc.start();
     this.engineSub.start();
 
     this.skidGain = this.noiseLoop('bandpass', 1500, 4);
     this.boostGain = this.noiseLoop('highpass', 2200, 0.7);
-    this.music = new Music(ctx, this.master);
+    this.music = new Music(ctx, this.musicGain);
   }
 
   private noiseLoop(type: BiquadFilterType, freq: number, q: number): GainNode {
@@ -63,7 +74,7 @@ export class GameAudio {
     filter.Q.value = q;
     const gain = ctx.createGain();
     gain.gain.value = 0;
-    src.connect(filter).connect(gain).connect(this.master);
+    src.connect(filter).connect(gain).connect(this.sfx);
     src.start();
     return gain;
   }
@@ -79,8 +90,22 @@ export class GameAudio {
     else void this.ctx.resume();
   }
 
-  startMusic(): void {
-    this.music?.start();
+  /** Volumes from the settings screen, each 0..1. Safe to call before init. */
+  setVolumes(music: number, sfx: number): void {
+    this.musicVolume = music;
+    this.sfxVolume = sfx;
+    if (!this.ctx) return;
+    this.musicGain.gain.setTargetAtTime(music, this.ctx.currentTime, 0.03);
+    this.sfx.gain.setTargetAtTime(sfx, this.ctx.currentTime, 0.03);
+  }
+
+  playMusic(song: SongId): void {
+    this.music?.play(song);
+  }
+
+  /** The tune playing now, for tests and debugging. */
+  get song(): SongId | null {
+    return this.music?.current ?? null;
   }
 
   stopMusic(): void {
@@ -122,7 +147,7 @@ export class GameAudio {
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(vol, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    osc.connect(gain).connect(this.master);
+    osc.connect(gain).connect(this.sfx);
     osc.start(t);
     osc.stop(t + dur + 0.02);
   }
@@ -144,7 +169,7 @@ export class GameAudio {
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(vol, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-    src.connect(filter).connect(gain).connect(this.master);
+    src.connect(filter).connect(gain).connect(this.sfx);
     src.start(t, Math.random());
     src.stop(t + 0.25);
     this.tone(110, 0.18, 'sine', vol, 0, 40);
@@ -163,7 +188,7 @@ export class GameAudio {
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(vol, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    src.connect(filter).connect(gain).connect(this.master);
+    src.connect(filter).connect(gain).connect(this.sfx);
     src.start(t, Math.random());
     src.stop(t + dur + 0.05);
   }

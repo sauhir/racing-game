@@ -7,6 +7,14 @@ on:
 permissions:
   contents: read
 
+# Branches whose pushes are published to GitHub Pages (keep in sync with the deploy job).
+env:
+  DEPLOY_REFS: '["refs/heads/main", "refs/heads/claude/affectionate-faraday-zn030o"]'
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,13 +29,13 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      - if: github.event_name == 'push' && contains(fromJSON(env.DEPLOY_REFS), github.ref)
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
   deploy:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.event_name == 'push' && contains(fromJSON('["refs/heads/main", "refs/heads/claude/affectionate-faraday-zn030o"]'), github.ref)
     needs: build
     runs-on: ubuntu-latest
     permissions:

@@ -70,6 +70,26 @@ Weapons and hard crashes cost health. A damaged car smokes and loses a little to
 zero it blows up and is back on the road two seconds later, fully repaired. Boxes sometimes
 repair a damaged car instead of giving an item.
 
+## Gamepad
+
+Any standard controller works alongside the keyboard, in menus and on track.
+
+| Control | Action |
+|---|---|
+| Left stick (or d-pad) | Steer; navigate menus |
+| RT / LT | Accelerate / brake and reverse |
+| A | Handbrake; confirm in menus |
+| X or RB | Boost |
+| B or LB | Use item; back in menus |
+| Y | Put the car back on the road |
+| Start | Pause / resume |
+
+## Settings
+
+Main menu → Settings: music volume, effects volume, graphics quality (High, Medium, or Low
+with shadows off and lower resolution) and a career reset. Each theme has its own generated
+tune, with a calmer one for the menus.
+
 ## Development
 
 ```bash
@@ -81,8 +101,15 @@ npm run lint
 npm run build      # static build in dist/
 ```
 
-Pushes to `main` are built, tested and deployed to GitHub Pages by
-`.github/workflows/ci.yml` (enable Pages with source "GitHub Actions" in the repository settings).
+Every push is linted, type-checked, tested and built by `.github/workflows/ci.yml`. Pushes to
+`main` and to the working branch `claude/affectionate-faraday-zn030o` are also deployed to
+GitHub Pages. One-time setup in the repository on GitHub:
+
+1. Settings → Pages → Build and deployment → Source: **GitHub Actions**.
+2. If the deploy job is rejected, Settings → Environments → `github-pages` → Deployment
+   branches: allow the branch being deployed.
+
+The game is then served at `https://<owner>.github.io/racing-game/`.
 
 ## Layout
 
@@ -90,7 +117,7 @@ Pushes to `main` are built, tested and deployed to GitHub Pages by
   (`car.ts`, all handling tunables in `TUNING`), collisions, the spline-based track,
   race rules, items, weapons and damage, and the CPU drivers (`ai/driver.ts`). Runs at a fixed 60 Hz.
 - `src/render/` — Three.js scene, chase camera, procedural car and track meshes, particles and skid marks.
-- `src/audio/` — synthesised engine, tyres, impacts and a generated music loop.
+- `src/audio/` — synthesised engine, tyres, impacts and weapons, and the step-sequenced tunes (`songs.ts`).
 - `src/ui/` — HTML/CSS HUD, minimap and menus.
 - `src/career/` — cups, points, prize money, garage and save handling (no rendering dependencies).
 - `src/data/` — track definitions, car models and rival personalities.
@@ -102,4 +129,4 @@ Pushes to `main` are built, tested and deployed to GitHub Pages by
 2. **Combat** (done): mystery boxes, six items, car damage and respawns.
 3. **Content** (done): four themed tracks, random circuits, jumps, boost pads, four cars, quick-race selection.
 4. **Career** (done): three tiered cups, prize money, car purchases and upgrades, saved in the browser.
-5. **Polish**: balance, performance and settings.
+5. **Polish** (done): settings, gamepad support, a tune per theme.

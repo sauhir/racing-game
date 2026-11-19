@@ -1,12 +1,13 @@
 import { GameAudio } from './audio/audio';
 import {
-  buyCar, buyUpgrade, CAR_PRICE, CUPS, cupStandings, cupUnlocked, MAX_LEVEL, recordRace, selectCar, startCup,
+  buyCar, buyUpgrade, CAR_PRICE, CUPS, cupStandings, cupUnlocked, MAX_LEVEL, newSave, recordRace, selectCar, startCup,
   statsFor, tierPace, tierRivals, trackForRace, UPGRADE_INFO, UPGRADE_KINDS, upgradeCost,
   type CupDef, type RaceOutcome, type Save,
 } from './career/career';
 import { loadSave, storeSave } from './career/save';
-import { Input } from './core/input';
+import { Input, type PadMode } from './core/input';
 import { clamp, lerpAngle } from './core/math';
+import { loadSettings, QUALITIES, storeSettings } from './core/settings';
 import { CARS, carById } from './data/cars';
 import { PLAYER_COLOR, RIVALS } from './data/rivals';
 import { TRACKS } from './data/tracks';
@@ -28,7 +29,8 @@ const LAPS = 3;
 const SAVE_KEY = 'pocket-drifters-selection';
 const THEME_NAMES = { meadow: 'Meadow', beach: 'Beach', snow: 'Snow', desert: 'Desert' };
 
-type Screen = 'title' | 'mainmenu' | 'career' | 'garage' | 'standings' | 'select' | 'race' | 'pause' | 'results';
+type Screen =
+  | 'title' | 'mainmenu' | 'settings' | 'career' | 'garage' | 'standings' | 'select' | 'race' | 'pause' | 'results';
 
 const money = (n: number): string => `$${n.toLocaleString('en-US')}`;
 const statBars = (st: CarStats): [string, number][] => [
@@ -61,7 +63,10 @@ class Game {
 
   // Career state.
   private mode: 'quick' | 'career' = 'quick';
-  private readonly save: Save = loadSave();
+  private save: Save = loadSave();
+  private readonly settings = loadSettings();
+  /** Reset career needs a second Enter to confirm. */
+  private resetArmed = false;
   private menuRow = 0;
   private garageCar = 0;
   /** Result of the cup race just finished, until the standings have been shown. */
@@ -75,6 +80,8 @@ class Game {
 
   constructor() {
     this.view.scene.add(this.effects.group);
+    this.view.setQuality(this.settings.quality);
+    this.audio.setVolumes(this.settings.music, this.settings.sfx);
     try {
       const saved = JSON.parse(localStorage.getItem(SAVE_KEY) ?? '{}') as { track?: number; car?: number };
       this.trackIndex = clamp(Math.floor(saved.track ?? 0), 0, TRACKS.length);
@@ -144,7 +151,7 @@ class Game {
   private startRace(): void {
     this.audio.init();
     this.audio.setPaused(false);
-    this.audio.startMusic();
+    this.audio.playMusic(this.track.def.theme);
     this.race.start();
     this.screen = 'race';
     this.hud.show('race');
@@ -158,7 +165,7 @@ class Game {
   private toMenu(screen: Screen): void {
     this.audio.init();
     this.audio.setPaused(false);
-    this.audio.stopMusic();
+    this.audio.playMusic('menu');
     this.audio.update(null);
     this.screen = screen;
     this.menuRow = 0;
@@ -166,6 +173,13 @@ class Game {
 
   private openMainMenu(): void {
     this.toMenu('mainmenu');
+    this.hud.show('menu');
+    this.renderMenu();
+  }
+
+  private openSettings(): void {
+    this.toMenu('settings');
+    this.resetArmed = false;
     this.hud.show('menu');
     this.renderMenu();
   }
@@ -204,6 +218,23 @@ class Game {
         items: [
           { label: 'Career', detail: 'Cups, prize money and your garage' },
           { label: 'Quick Race', detail: 'Any track, any car' },
+          { label: 'Settings', detail: 'Sound and graphics' },
+        ],
+      });
+    } else if (this.screen === 'settings') {
+      const st = this.settings;
+      const percent = (v: number): string => `◀  ${Math.round(v * 100)}%  ▶`;
+      this.hud.showMenu({
+        title: 'Settings', selected: this.menuRow,
+        hint: '↑ ↓ choose  ·  ← → change  ·  Esc back',
+        items: [
+          { label: 'Music volume', detail: percent(st.music) },
+          { label: 'Effects volume', detail: percent(st.sfx) },
+          { label: 'Graphics quality', detail: `◀  ${st.quality[0].toUpperCase()}${st.quality.slice(1)}  ▶` },
+          {
+            label: 'Reset career',
+            detail: this.resetArmed ? 'Press Enter again to erase all progress' : 'Erases money, cars and trophies',
+          },
         ],
       });
     } else if (this.screen === 'career') {
@@ -269,8 +300,8 @@ class Game {
 
   private handleMenuScreen(enter: boolean, esc: boolean): void {
     const save = this.save;
-    const rows = { mainmenu: 2, career: CUPS.length + 1, garage: UPGRADE_KINDS.length + 1, standings: 0 }[
-      this.screen as 'mainmenu' | 'career' | 'garage' | 'standings'
+    const rows = { mainmenu: 3, settings: 4, career: CUPS.length + 1, garage: UPGRADE_KINDS.length + 1, standings: 0 }[
+      this.screen as 'mainmenu' | 'settings' | 'career' | 'garage' | 'standings'
     ];
     const move = (this.input.take('ArrowDown', 'KeyS') ? 1 : 0) - (this.input.take('ArrowUp', 'KeyW') ? 1 : 0);
     const side = (this.input.take('ArrowRight', 'KeyD') ? 1 : 0) - (this.input.take('ArrowLeft', 'KeyA') ? 1 : 0);
@@ -281,7 +312,30 @@ class Game {
         this.screen = 'title';
         return this.hud.show('title');
       }
-      if (enter) return this.menuRow === 0 ? this.openCareer() : this.openSelection();
+      if (enter) return [() => this.openCareer(), () => this.openSelection(), () => this.openSettings()][this.menuRow]();
+    } else if (this.screen === 'settings') {
+      if (esc) return this.openMainMenu();
+      const st = this.settings;
+      if (move !== 0) this.resetArmed = false;
+      if (side !== 0 && this.menuRow < 2) {
+        const key = this.menuRow === 0 ? 'music' : 'sfx';
+        st[key] = clamp(Math.round((st[key] + side * 0.1) * 10) / 10, 0, 1);
+        this.audio.setVolumes(st.music, st.sfx);
+        // A blip to judge the effects level by.
+        if (key === 'sfx') this.audio.pickup();
+      } else if (side !== 0 && this.menuRow === 2) {
+        const n = QUALITIES.length;
+        st.quality = QUALITIES[(QUALITIES.indexOf(st.quality) + side + n) % n];
+        this.view.setQuality(st.quality);
+      } else if (enter && this.menuRow === 3) {
+        if (this.resetArmed) {
+          this.save = newSave();
+          storeSave(this.save);
+          this.audio.drop();
+        }
+        this.resetArmed = !this.resetArmed;
+      }
+      if (side !== 0) storeSettings(st);
     } else if (this.screen === 'career') {
       if (esc) return this.openMainMenu();
       if (enter && this.menuRow === CUPS.length) return this.openGarage();
@@ -328,7 +382,7 @@ class Game {
     this.mode = 'quick';
     this.audio.init();
     this.audio.setPaused(false);
-    this.audio.stopMusic();
+    this.audio.playMusic('menu');
     this.audio.update(null);
     if (this.race.phase !== 'grid' || this.track.def !== this.trackDef()) this.loadTrack();
     else this.newRace();
@@ -404,6 +458,7 @@ class Game {
         if (enter) this.openMainMenu();
         break;
       case 'mainmenu':
+      case 'settings':
       case 'career':
       case 'garage':
       case 'standings':
@@ -571,6 +626,9 @@ class Game {
     this.lastTime = now;
     this.clock += dt;
 
+    const padMode: PadMode = this.screen === 'race' ? 'race' : this.screen === 'pause' ? 'pause' : 'menu';
+    this.input.poll(padMode);
+    this.hud.showGamepadHints(this.input.gamepadSeen);
     this.handleMenus();
     const running = this.screen === 'race' || this.screen === 'results';
 
@@ -615,7 +673,7 @@ class Game {
     const p = this.race.player;
     const px = p.prevX + (p.x - p.prevX) * alpha;
     const pz = p.prevY + (p.y - p.prevY) * alpha;
-    if (this.screen === 'title' || this.screen === 'mainmenu' || this.screen === 'career' || this.screen === 'standings') {
+    if (['title', 'mainmenu', 'settings', 'career', 'standings'].includes(this.screen)) {
       const mid = this.race.cars[2];
       this.chase.orbit(mid.x, mid.y, this.clock);
     } else if (this.screen === 'garage') {
