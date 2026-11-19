@@ -55,7 +55,9 @@ boost pads, and stretches of wider and narrower road.
 
 ## Items and damage
 
-Drive through a mystery box to get one item; cars further back get stronger ones.
+Drive through a mystery box to get one item; cars further back get stronger ones. Boxes are
+easy to hit: five span the road, each car takes the nearest one within reach, and they refill
+in half a second.
 
 | Item | Effect |
 |---|---|
@@ -116,7 +118,8 @@ The game is then served at `https://<owner>.github.io/racing-game/`.
 - `src/sim/` — the game simulation, with no rendering dependencies: car physics
   (`car.ts`, all handling tunables in `TUNING`), collisions, the spline-based track,
   race rules, items, weapons and damage, and the CPU drivers (`ai/driver.ts`). Runs at a fixed 60 Hz.
-- `src/render/` — Three.js scene, chase camera, procedural car and track meshes, particles and skid marks.
+- `src/render/` — Three.js scene with an HDR bloom pass, chase camera, procedural car and track meshes,
+  shader materials (boxes, light beams, shield, ground pulses), particle layers and skid marks.
 - `src/audio/` — synthesised engine, tyres, impacts and weapons, and the step-sequenced tunes (`songs.ts`).
 - `src/ui/` — HTML/CSS HUD, minimap and menus.
 - `src/career/` — cups, points, prize money, garage and save handling (no rendering dependencies).
