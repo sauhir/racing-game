@@ -33,7 +33,8 @@ const SHIELD = new THREE.ShaderMaterial({
     varying vec3 vView;
     varying vec3 vLocal;
     void main() {
-      float rim = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.2);
+      // Clamped: a negative base to a power is undefined and shows up as broken pixels.
+      float rim = pow(clamp(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 0.0, 1.0), 2.2);
       float bands = smoothstep(0.75, 1.0, sin(vLocal.y * 9.0 - time * 5.0));
       float cells = smoothstep(0.8, 1.0, sin(vLocal.x * 14.0 + time * 2.0) * sin(vLocal.z * 14.0 - time * 2.0));
       vec3 col = vec3(0.25, 0.9, 1.0) * (0.2 + rim * 1.5 + bands * 0.5 + cells * 0.7);

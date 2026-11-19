@@ -18,6 +18,8 @@ const glowLayers = new THREE.Layers();
 glowLayers.set(GLOW_LAYER);
 const BLACK = new THREE.MeshBasicMaterial({ color: 0x000000 });
 const BLACK_BACKGROUND = new THREE.Color(0x000000);
+const PASS_VERTEX =
+  'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
 const SUN_OFFSET = new THREE.Vector3(45, 90, 30);
 
 /** Renderer, scene and lighting. The sun's shadow box follows a focus point. */
@@ -62,6 +64,22 @@ export class View {
     this.glowComposer = new EffectComposer(this.renderer, hdr());
     this.glowComposer.renderToScreen = false;
     this.glowComposer.addPass(new RenderPass(this.scene, this.camera));
+    // Scrub invalid or negative pixels before blurring: one bad pixel would
+    // otherwise be smeared into a large block.
+    this.glowComposer.addPass(
+      new ShaderPass(
+        new THREE.ShaderMaterial({
+          uniforms: { tDiffuse: { value: null } },
+          vertexShader: PASS_VERTEX,
+          fragmentShader:
+            'uniform sampler2D tDiffuse; varying vec2 vUv;' +
+            'void main() { vec3 c = texture2D(tDiffuse, vUv).rgb;' +
+            ' if (!(c.r >= 0.0 && c.g >= 0.0 && c.b >= 0.0)) c = vec3(0.0);' +
+            ' gl_FragColor = vec4(min(c, vec3(4.0)), 1.0); }',
+        }),
+        'tDiffuse',
+      ),
+    );
     this.glowComposer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.9, 0.45, 0));
 
     this.composer = new EffectComposer(this.renderer, hdr());
@@ -69,10 +87,14 @@ export class View {
     const add = new ShaderPass(
       new THREE.ShaderMaterial({
         uniforms: { tDiffuse: { value: null }, glow: { value: this.glowComposer.renderTarget2.texture } },
-        vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        vertexShader: PASS_VERTEX,
         fragmentShader:
           'uniform sampler2D tDiffuse; uniform sampler2D glow; varying vec2 vUv;' +
-          'void main() { gl_FragColor = texture2D(tDiffuse, vUv) + vec4(texture2D(glow, vUv).rgb, 0.0); }',
+          // The comparison is false for invalid (NaN) values, so a bad glow pixel is dropped
+          // instead of blacking out the picture.
+          'void main() { vec3 g = texture2D(glow, vUv).rgb;' +
+          ' if (!(g.r >= 0.0 && g.g >= 0.0 && g.b >= 0.0)) g = vec3(0.0);' +
+          ' gl_FragColor = texture2D(tDiffuse, vUv) + vec4(min(g, vec3(4.0)), 0.0); }',
       }),
       'tDiffuse',
     );
