@@ -38,6 +38,8 @@ export interface RaceConfig {
   seed: number;
   /** Maximum CPU top-speed change from rubber-banding (0.06 = 6%). */
   rubberBand?: number;
+  /** Multiplier on every rival's pace (career tiers); 1 is the standard field. */
+  pace?: number;
   /** No human: the player's car gets a CPU driver too (demo and tests). */
   autopilot?: boolean;
   /** Mystery boxes, weapons and damage. On unless set to false. */
@@ -87,7 +89,7 @@ export class Race {
       car.model = p.car;
       this.cars.push(car);
       this.drivers.set(car, new AIDriver(p, makeRng(Math.floor(rng() * 1e9))));
-      this.baseScale.set(car, 0.9 + 0.1 * p.skill);
+      this.baseScale.set(car, (0.9 + 0.1 * p.skill) * (config.pace ?? 1));
     });
     // The player starts at the back of the grid and has to earn it.
     this.player = new Car(

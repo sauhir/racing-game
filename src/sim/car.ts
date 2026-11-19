@@ -57,6 +57,10 @@ export interface CarStats {
   grip: number;
   /** Multiplier on damage taken: below 1 is tougher, above 1 more fragile. */
   armour: number;
+  /** Multipliers from upgrades: off-road top speed, boost charge rate, boost burn rate. */
+  offroad: number;
+  boostCharge: number;
+  boostDrain: number;
 }
 
 const GRAVITY = 26;
@@ -69,6 +73,9 @@ export const BASE_STATS: CarStats = {
   turnRate: TUNING.turnRate,
   grip: TUNING.grip,
   armour: 1,
+  offroad: 1,
+  boostCharge: 1,
+  boostDrain: 1,
 };
 
 export class Car {
@@ -211,7 +218,7 @@ export class Car {
     // Boost: needs a minimum charge to light, then burns until released or empty.
     if (inp.boost && this.boost > 0 && (this.boosting || this.boost >= T.boostMinStart)) {
       this.boosting = true;
-      this.boost = Math.max(0, this.boost - T.boostDrain * dt);
+      this.boost = Math.max(0, this.boost - T.boostDrain * st.boostDrain * dt);
       if (this.boost === 0) this.boosting = false;
     } else {
       this.boosting = false;
@@ -224,7 +231,7 @@ export class Car {
       top *= T.boostSpeed;
       acc *= T.boostAccel;
     }
-    if (this.offroad) top *= this.offroadSpeed;
+    if (this.offroad) top *= Math.min(0.9, this.offroadSpeed * st.offroad);
 
     const throttle = clamp(inp.throttle, 0, 1);
     const brake = clamp(inp.brake, 0, 1);
@@ -288,7 +295,7 @@ export class Car {
     // Only real, moving drifts charge boost; no farming it with donuts.
     if (this.drifting && Math.abs(vl) > 3 && speedBefore > T.boostChargeMinSpeed && !this.offroad
       && this.spin <= 0 && this.oiled <= 0) {
-      this.boost = Math.min(1, this.boost + T.boostCharge * clamp(Math.abs(vl) / 12, 0.3, 1) * dt);
+      this.boost = Math.min(1, this.boost + T.boostCharge * st.boostCharge * clamp(Math.abs(vl) / 12, 0.3, 1) * dt);
     }
 
     // Recompose with the pre-turn basis: the body rotates, the momentum does not.

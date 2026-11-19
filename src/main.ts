@@ -1,4 +1,10 @@
 import { GameAudio } from './audio/audio';
+import {
+  buyCar, buyUpgrade, CAR_PRICE, CUPS, cupStandings, cupUnlocked, MAX_LEVEL, recordRace, selectCar, startCup,
+  statsFor, tierPace, tierRivals, trackForRace, UPGRADE_INFO, UPGRADE_KINDS, upgradeCost,
+  type CupDef, type RaceOutcome, type Save,
+} from './career/career';
+import { loadSave, storeSave } from './career/save';
 import { Input } from './core/input';
 import { clamp, lerpAngle } from './core/math';
 import { CARS, carById } from './data/cars';
@@ -11,18 +17,26 @@ import { WorldItems } from './render/pickups';
 import { View } from './render/scene';
 import { THEMES } from './render/themes';
 import { buildTrackScene, type TrackScene } from './render/trackMesh';
-import { NO_INPUT } from './sim/car';
+import { NO_INPUT, type CarStats } from './sim/car';
 import { Race, type RaceEvent } from './sim/race';
 import { Track, type TrackDef } from './sim/track';
 import { generateTrack } from './sim/trackGen';
-import { Hud, formatTime } from './ui/hud';
+import { Hud, formatTime, ordinal, type MenuItem } from './ui/hud';
 
 const STEP = 1 / 60;
 const LAPS = 3;
 const SAVE_KEY = 'pocket-drifters-selection';
 const THEME_NAMES = { meadow: 'Meadow', beach: 'Beach', snow: 'Snow', desert: 'Desert' };
 
-type Screen = 'title' | 'select' | 'race' | 'pause' | 'results';
+type Screen = 'title' | 'mainmenu' | 'career' | 'garage' | 'standings' | 'select' | 'race' | 'pause' | 'results';
+
+const money = (n: number): string => `$${n.toLocaleString('en-US')}`;
+const statBars = (st: CarStats): [string, number][] => [
+  ['Speed', (st.maxSpeed - 42.5) / 9],
+  ['Acceleration', (st.accel - 17) / 18],
+  ['Handling', (st.turnRate - 2.2) / 1.1],
+  ['Armour', (1 / st.armour - 0.45) / 2],
+];
 
 class Game {
   private readonly view = new View(document.getElementById('game') as HTMLCanvasElement);
@@ -44,6 +58,14 @@ class Game {
   private lapStart = 0;
   private bestLap = 0;
   private resultsDelay = 0;
+
+  // Career state.
+  private mode: 'quick' | 'career' = 'quick';
+  private readonly save: Save = loadSave();
+  private menuRow = 0;
+  private garageCar = 0;
+  /** Result of the cup race just finished, until the standings have been shown. */
+  private outcome: RaceOutcome | null = null;
 
   // Selection screen state. Track index TRACKS.length means "random circuit".
   private row = 0;
@@ -70,7 +92,7 @@ class Game {
   }
 
   /** Builds the selected track's world, replacing any previous one, and a fresh race on it. */
-  private loadTrack(): void {
+  private loadTrack(def: TrackDef = this.trackDef()): void {
     if (this.trackScene) {
       this.view.scene.remove(this.trackScene.group);
       this.trackScene.dispose();
@@ -78,7 +100,7 @@ class Game {
     if (this.worldItems) this.view.scene.remove(this.worldItems.group);
     this.worldItems = null;
 
-    this.track = new Track(this.trackDef());
+    this.track = new Track(def);
     const theme = THEMES[this.track.def.theme];
     this.trackScene = buildTrackScene(this.track);
     this.view.scene.add(this.trackScene.group);
@@ -90,10 +112,19 @@ class Game {
 
   private newRace(): void {
     for (const m of this.carMeshes) this.view.scene.remove(m.root);
+    // Quick races use stock cars and the standard field; the career uses the
+    // player's own (upgraded) car and rivals matched to the cup's tier.
+    const cup = this.currentCup();
+    const career = this.mode === 'career';
+    const carId = this.screen === 'garage' ? CARS[this.garageCar].id : this.save.car;
     this.race = new Race(this.track, {
-      laps: LAPS, playerName: 'You', playerColor: PLAYER_COLOR, rivals: RIVALS, seed: this.seed++,
-      playerCar: CARS[this.carIndex], carFor: (id) => carById(id).stats,
+      laps: LAPS, playerName: 'You', playerColor: PLAYER_COLOR, seed: this.seed++,
+      rivals: career && cup ? tierRivals(cup.tier) : RIVALS,
+      pace: career && cup ? tierPace(cup.tier) : 1,
+      playerCar: career ? { id: carId, stats: statsFor(this.save, carId) } : CARS[this.carIndex],
+      carFor: (id) => carById(id).stats,
     });
+    this.outcome = null;
     if (!this.worldItems) {
       this.worldItems = new WorldItems(this.race.boxes.length);
       this.view.scene.add(this.worldItems.group);
@@ -119,12 +150,188 @@ class Game {
     this.hud.show('race');
   }
 
-  private openSelection(): void {
+  private currentCup(): CupDef | undefined {
+    return CUPS.find((c) => c.id === this.save.progress?.cup);
+  }
+
+  /** Leaves a race (or the title) for a menu: quiet the car, keep the scene. */
+  private toMenu(screen: Screen): void {
     this.audio.init();
     this.audio.setPaused(false);
     this.audio.stopMusic();
     this.audio.update(null);
-    if (this.race.phase !== 'grid') this.newRace();
+    this.screen = screen;
+    this.menuRow = 0;
+  }
+
+  private openMainMenu(): void {
+    this.toMenu('mainmenu');
+    this.hud.show('menu');
+    this.renderMenu();
+  }
+
+  private openCareer(): void {
+    this.mode = 'career';
+    this.toMenu('career');
+    this.newRace();
+    this.hud.show('menu');
+    this.renderMenu();
+  }
+
+  private openGarage(): void {
+    this.toMenu('garage');
+    this.garageCar = Math.max(0, CARS.findIndex((c) => c.id === this.save.car));
+    this.newRace();
+    this.hud.show('menu');
+    this.renderMenu();
+  }
+
+  /** Cup table before each race, and the final result after the last one. */
+  private openStandings(): void {
+    this.toMenu('standings');
+    const cup = this.currentCup();
+    if (cup && this.save.progress) this.loadTrack(trackForRace(cup.races[this.save.progress.next]));
+    this.hud.show('menu');
+    this.renderMenu();
+  }
+
+  private renderMenu(): void {
+    const save = this.save;
+    const hint = '↑ ↓ choose  ·  Enter select  ·  Esc back';
+    if (this.screen === 'mainmenu') {
+      this.hud.showMenu({
+        title: 'Pocket Drifters', selected: this.menuRow, hint,
+        items: [
+          { label: 'Career', detail: 'Cups, prize money and your garage' },
+          { label: 'Quick Race', detail: 'Any track, any car' },
+        ],
+      });
+    } else if (this.screen === 'career') {
+      const items: MenuItem[] = CUPS.map((cup) => {
+        const best = save.trophies[cup.id];
+        const previous = CUPS.find((c) => c.tier === cup.tier - 1);
+        if (!cupUnlocked(save, cup)) {
+          return { label: cup.name, detail: `Locked: finish top 3 in the ${previous?.name}`, style: 'locked' };
+        }
+        if (save.progress?.cup === cup.id) {
+          return { label: cup.name, detail: `Race ${save.progress.next + 1} of ${cup.races.length}: continue` };
+        }
+        return { label: cup.name, detail: best ? `Best finish: ${best}${ordinal(best)}` : 'Not raced yet' };
+      });
+      items.push({ label: 'Garage', detail: `Driving the ${carById(save.car).name}` });
+      this.hud.showMenu({ title: 'Career', subtitle: `Money: ${money(save.money)}`, items, selected: this.menuRow, hint });
+    } else if (this.screen === 'garage') {
+      const car = CARS[this.garageCar];
+      const owned = save.garage[car.id];
+      const items: MenuItem[] = [{
+        label: `◀  ${car.name}  ▶`,
+        detail: owned ? `${car.blurb} · driving` : `${car.blurb} · ${money(CAR_PRICE[car.id])}: Enter to buy`,
+      }];
+      for (const kind of UPGRADE_KINDS) {
+        const level = owned?.[kind] ?? 0;
+        const cost = upgradeCost(save, car.id, kind);
+        items.push({
+          label: `${UPGRADE_INFO[kind].name}  ${'●'.repeat(level)}${'○'.repeat(MAX_LEVEL - level)}`,
+          detail: !owned ? 'Buy the car first' : cost === null ? 'Fully upgraded' : `${money(cost)} · ${UPGRADE_INFO[kind].effect}`,
+          style: owned ? undefined : 'locked',
+        });
+      }
+      this.hud.showMenu({
+        title: 'Garage', subtitle: `Money: ${money(save.money)}`, items, selected: this.menuRow, side: true,
+        hint: '← → change car  ·  ↑ ↓ choose  ·  Enter buy  ·  Esc back',
+        stats: statBars(statsFor(save, car.id)),
+      });
+    } else if (this.screen === 'standings') {
+      const cup = this.currentCup();
+      const o = this.outcome;
+      const names = [...RIVALS.map((r) => r.name), 'You'];
+      const table = o?.standings ?? (save.progress ? cupStandings(save.progress, names) : []);
+      const items: MenuItem[] = table.map((s, i) => ({
+        label: `${i + 1}${ordinal(i + 1)}   ${s.name}`, detail: `${s.points} ${s.points === 1 ? 'pt' : 'pts'}`,
+        style: s.name === 'You' ? 'plain me' : 'plain',
+      }));
+      if (o?.cupDone) {
+        const place = o.cupPlace ?? 0;
+        this.hud.showMenu({
+          title: place === 1 ? 'Cup won!' : `Cup finished: ${place}${ordinal(place)}`,
+          subtitle: [o.bonus ? `Bonus ${money(o.bonus)}` : 'No bonus this time', o.unlocked ? `${o.unlocked} unlocked!` : '']
+            .filter(Boolean).join('  ·  '),
+          items, selected: -1, hint: 'Enter continue',
+        });
+      } else if (cup && save.progress) {
+        this.hud.showMenu({
+          title: `${cup.name}: race ${save.progress.next + 1} of ${cup.races.length}`,
+          subtitle: this.track.def.name, items, selected: -1, hint: 'Enter race  ·  Esc back to career',
+        });
+      }
+    }
+  }
+
+  private handleMenuScreen(enter: boolean, esc: boolean): void {
+    const save = this.save;
+    const rows = { mainmenu: 2, career: CUPS.length + 1, garage: UPGRADE_KINDS.length + 1, standings: 0 }[
+      this.screen as 'mainmenu' | 'career' | 'garage' | 'standings'
+    ];
+    const move = (this.input.take('ArrowDown', 'KeyS') ? 1 : 0) - (this.input.take('ArrowUp', 'KeyW') ? 1 : 0);
+    const side = (this.input.take('ArrowRight', 'KeyD') ? 1 : 0) - (this.input.take('ArrowLeft', 'KeyA') ? 1 : 0);
+    if (move !== 0 && rows > 0) this.menuRow = (this.menuRow + move + rows) % rows;
+
+    if (this.screen === 'mainmenu') {
+      if (esc) {
+        this.screen = 'title';
+        return this.hud.show('title');
+      }
+      if (enter) return this.menuRow === 0 ? this.openCareer() : this.openSelection();
+    } else if (this.screen === 'career') {
+      if (esc) return this.openMainMenu();
+      if (enter && this.menuRow === CUPS.length) return this.openGarage();
+      if (enter) {
+        const cup = CUPS[this.menuRow];
+        if (!cupUnlocked(save, cup)) return this.audio.drop();
+        startCup(save, cup);
+        storeSave(save);
+        return this.openStandings();
+      }
+    } else if (this.screen === 'garage') {
+      if (esc) return this.openCareer();
+      const car = CARS[this.garageCar];
+      if (side !== 0) {
+        this.garageCar = (this.garageCar + side + CARS.length) % CARS.length;
+        // Looking at a car you own puts you in it.
+        selectCar(save, CARS[this.garageCar].id);
+        storeSave(save);
+        this.newRace();
+      } else if (enter) {
+        const bought = this.menuRow === 0 ? buyCar(save, car.id) : buyUpgrade(save, car.id, UPGRADE_KINDS[this.menuRow - 1]);
+        if (bought) {
+          this.audio.pickup();
+          storeSave(save);
+          this.newRace();
+        } else {
+          this.audio.drop();
+        }
+      }
+    } else if (this.screen === 'standings') {
+      if (this.outcome?.cupDone) {
+        if (enter || esc) return this.openCareer();
+      } else if (enter) {
+        this.newRace();
+        return this.startRace();
+      } else if (esc) {
+        return this.openCareer();
+      }
+    }
+    if (move !== 0 || side !== 0 || enter) this.renderMenu();
+  }
+
+  private openSelection(): void {
+    this.mode = 'quick';
+    this.audio.init();
+    this.audio.setPaused(false);
+    this.audio.stopMusic();
+    this.audio.update(null);
+    if (this.race.phase !== 'grid' || this.track.def !== this.trackDef()) this.loadTrack();
+    else this.newRace();
     this.screen = 'select';
     this.hud.show('select');
     this.refreshSelection();
@@ -194,7 +401,13 @@ class Game {
 
     switch (this.screen) {
       case 'title':
-        if (enter) this.openSelection();
+        if (enter) this.openMainMenu();
+        break;
+      case 'mainmenu':
+      case 'career':
+      case 'garage':
+      case 'standings':
+        this.handleMenuScreen(enter, esc || back);
         break;
       case 'select':
         this.handleSelection(enter, esc || back);
@@ -213,15 +426,20 @@ class Game {
           this.screen = 'race';
           this.hud.show('race');
           this.audio.setPaused(false);
+        } else if (this.outcome) {
+          // The cup race is already in the books: no restarting or quitting it now.
         } else if (enter) {
           this.newRace();
           this.startRace();
         } else if (back) {
-          this.openSelection();
+          if (this.mode === 'career') this.openCareer();
+          else this.openSelection();
         }
         break;
       case 'results':
-        if (enter) {
+        if (this.mode === 'career') {
+          if (enter || esc) this.openStandings();
+        } else if (enter) {
           this.newRace();
           this.startRace();
         } else if (esc || back) {
@@ -335,6 +553,10 @@ class Game {
             this.audio.finish(place <= 3);
             this.hud.say(place === 1 ? 'WINNER!' : 'FINISH!', 2.5);
             this.resultsDelay = 2.5;
+            if (this.mode === 'career' && this.save.progress) {
+              this.outcome = recordRace(this.save, this.race.standings().map((c) => c.name), player.name);
+              storeSave(this.save);
+            }
           }
           break;
         case 'respawn':
@@ -372,7 +594,14 @@ class Game {
           }
         }
       }
-      if (this.screen === 'results') this.hud.showResults(this.race);
+      if (this.screen === 'results') {
+        const o = this.outcome;
+        if (this.mode === 'career' && o) {
+          this.hud.showResults(this.race, `Prize ${money(o.prize)}  ·  +${o.points} ${o.points === 1 ? 'point' : 'points'}`, 'Press Enter to continue', '');
+        } else {
+          this.hud.showResults(this.race, '', 'Press Enter to race again', 'Esc: choose another track or car');
+        }
+      }
       this.hud.update(this.race, this.bestLap, dt);
       this.audio.update(this.race.phase === 'racing' ? this.race.player : null);
     }
@@ -386,9 +615,11 @@ class Game {
     const p = this.race.player;
     const px = p.prevX + (p.x - p.prevX) * alpha;
     const pz = p.prevY + (p.y - p.prevY) * alpha;
-    if (this.screen === 'title') {
+    if (this.screen === 'title' || this.screen === 'mainmenu' || this.screen === 'career' || this.screen === 'standings') {
       const mid = this.race.cars[2];
       this.chase.orbit(mid.x, mid.y, this.clock);
+    } else if (this.screen === 'garage') {
+      this.chase.orbit(p.x, p.y, this.clock * 1.6, 12, 5.5, -1, 4);
     } else if (this.screen === 'select') {
       // Close circling shot of the chosen car on the grid.
       this.chase.orbit(p.x, p.y, this.clock * 1.6, 12, 5.5, -3.2);

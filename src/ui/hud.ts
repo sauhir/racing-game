@@ -44,6 +44,39 @@ const ITEM_ICONS: Record<ItemType, string> = {
   nitro: svg('<path d="M28 3 10 27H22L19 45 38 19H26Z" fill="#ffd23c" stroke="#ff8a1f" stroke-width="2"/>'),
 };
 
+export interface MenuItem {
+  label: string;
+  detail?: string;
+  /** 'locked' greys a row out; 'plain' and 'me' are for table rows such as standings. */
+  style?: 'locked' | 'plain' | 'plain me';
+}
+
+export interface MenuView {
+  title: string;
+  subtitle?: string;
+  items: MenuItem[];
+  /** Index of the highlighted row, or -1 for none. */
+  selected: number;
+  hint: string;
+  stats?: [string, number][];
+  /** Dock the menu on the right so the scene behind stays visible. */
+  side?: boolean;
+}
+
+/** Labelled 0..1 bars for comparing cars. */
+function statBars(stats: [string, number][]): HTMLElement[] {
+  return stats.flatMap(([label, value]) => {
+    const name = document.createElement('span');
+    name.textContent = label;
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    const fill = document.createElement('i');
+    fill.style.width = `${Math.round(Math.max(0.08, Math.min(1, value)) * 100)}%`;
+    bar.append(fill);
+    return [name, bar];
+  });
+}
+
 const hex = (c: number): string => '#' + c.toString(16).padStart(6, '0');
 
 /** DOM overlay: race HUD, minimap, big centre messages and the menu screens. */
@@ -66,6 +99,7 @@ export class Hud {
   private readonly title = $('title');
   private readonly pause = $('pause');
   private readonly select = $('select');
+  private readonly menu = $('menu');
   private readonly results = $('results');
   private readonly resultsTitle = $('results-title');
   private readonly resultsTable = $<HTMLTableElement>('results-table');
@@ -98,12 +132,35 @@ export class Hud {
     }
   }
 
-  show(screen: 'title' | 'select' | 'race' | 'pause' | 'results'): void {
+  show(screen: 'title' | 'menu' | 'select' | 'race' | 'pause' | 'results'): void {
+    this.menu.classList.toggle('hidden', screen !== 'menu');
     this.title.classList.toggle('hidden', screen !== 'title');
     this.select.classList.toggle('hidden', screen !== 'select');
     this.pause.classList.toggle('hidden', screen !== 'pause');
     this.results.classList.toggle('hidden', screen !== 'results');
-    this.hud.classList.toggle('hidden', screen === 'title' || screen === 'select');
+    this.hud.classList.toggle('hidden', screen === 'title' || screen === 'select' || screen === 'menu');
+  }
+
+  /** A generic list screen: main menu, career hub, garage and cup standings. */
+  showMenu(m: MenuView): void {
+    this.menu.classList.toggle('side', m.side === true);
+    $('menu-title').textContent = m.title;
+    $('menu-sub').textContent = m.subtitle ?? '';
+    $('menu-hint').textContent = m.hint;
+    $('menu-items').replaceChildren(
+      ...m.items.map((item, i) => {
+        const row = document.createElement('div');
+        row.className = ['menu-row', i === m.selected ? 'sel' : '', item.style ?? ''].join(' ');
+        const label = document.createElement('span');
+        label.textContent = item.label;
+        const detail = document.createElement('span');
+        detail.className = 'detail';
+        detail.textContent = item.detail ?? '';
+        row.append(label, detail);
+        return row;
+      }),
+    );
+    $('menu-stats').replaceChildren(...statBars(m.stats ?? []));
   }
 
   /** Fills in the track and car pickers on the selection screen. */
@@ -117,18 +174,7 @@ export class Hud {
     $('track-sub').textContent = trackInfo;
     $('car-name').textContent = carName;
     $('car-sub').textContent = carInfo;
-    $('car-stats').replaceChildren(
-      ...stats.flatMap(([label, value]) => {
-        const name = document.createElement('span');
-        name.textContent = label;
-        const bar = document.createElement('div');
-        bar.className = 'bar';
-        const fill = document.createElement('i');
-        fill.style.width = `${Math.round(Math.max(0.08, Math.min(1, value)) * 100)}%`;
-        bar.append(fill);
-        return [name, bar];
-      }),
-    );
+    $('car-stats').replaceChildren(...statBars(stats));
   }
 
   /** Flash a centre-screen message. seconds = 0 keeps it until cleared. */
@@ -215,7 +261,10 @@ export class Hud {
     dot(player, 6.5);
   }
 
-  showResults(race: Race): void {
+  showResults(race: Race, extra: string, prompt: string, hint: string): void {
+    $('results-extra').textContent = extra;
+    $('results-prompt').textContent = prompt;
+    $('results-hint').textContent = hint;
     const order = race.standings();
     const place = order.indexOf(race.player) + 1;
     this.resultsTitle.textContent =

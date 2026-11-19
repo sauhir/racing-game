@@ -40,6 +40,14 @@
       </div>
     </div>
 
+    <div id="menu" class="overlay hidden">
+      <h2 id="menu-title"></h2>
+      <p id="menu-sub"></p>
+      <div id="menu-items"></div>
+      <div class="stats" id="menu-stats"></div>
+      <div class="keys"><span id="menu-hint"></span></div>
+    </div>
+
     <div id="select" class="overlay hidden">
       <h2>Quick Race</h2>
       <div class="pickers">
@@ -78,8 +86,9 @@
     <div id="results" class="overlay hidden">
       <h2 id="results-title">Finished!</h2>
       <table id="results-table"></table>
-      <p class="prompt">Press <kbd>Enter</kbd> to race again</p>
-      <div class="keys"><span><kbd>Esc</kbd> choose another track or car</span></div>
+      <p id="results-extra"></p>
+      <p class="prompt" id="results-prompt"></p>
+      <div class="keys"><span id="results-hint"></span></div>
     </div>
 
     <script type="module" src="./src/main.ts"></script>

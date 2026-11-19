@@ -20,9 +20,20 @@ and all sound effects and music are synthesised with WebAudio. There are no asse
 | `M` | Mute |
 | `Enter` | Start / restart |
 
+## Career
+
+Three cups of four races each: Rookie, Pro and Champion. Later cups run tracks in reverse,
+end on a generated circuit and field faster, sharper rivals. Each race pays points and
+prize money; finishing a cup in the top three unlocks the next and pays a bonus.
+
+Money goes on the garage: buy the Dart, Hopper and Hauler, and upgrade each car's engine,
+tyres, armour and nitro through three levels. Upgrades are deliberately mild (a maxed engine
+is 6% faster) and never touch grip, so the drifting feels the same in every car. Progress is
+saved in the browser, including a cup that is part-way through.
+
 ## Tracks and cars
 
-Pick a track and a car before each race (the choice is remembered).
+In a quick race, pick any track and any (stock) car; the choice is remembered.
 
 | Track | Theme | Notes |
 |---|---|---|
@@ -81,6 +92,7 @@ Pushes to `main` are built, tested and deployed to GitHub Pages by
 - `src/render/` — Three.js scene, chase camera, procedural car and track meshes, particles and skid marks.
 - `src/audio/` — synthesised engine, tyres, impacts and a generated music loop.
 - `src/ui/` — HTML/CSS HUD, minimap and menus.
+- `src/career/` — cups, points, prize money, garage and save handling (no rendering dependencies).
 - `src/data/` — track definitions, car models and rival personalities.
 - `tests/` — Vitest specs for the simulation.
 
@@ -89,5 +101,5 @@ Pushes to `main` are built, tested and deployed to GitHub Pages by
 1. **Core race** (done): one track, drift handling, boost, CPU rivals, laps, HUD, audio.
 2. **Combat** (done): mystery boxes, six items, car damage and respawns.
 3. **Content** (done): four themed tracks, random circuits, jumps, boost pads, four cars, quick-race selection.
-4. **Career**: tiered cups, prize money, upgrades and car unlocks saved in the browser.
+4. **Career** (done): three tiered cups, prize money, car purchases and upgrades, saved in the browser.
 5. **Polish**: balance, performance and settings.

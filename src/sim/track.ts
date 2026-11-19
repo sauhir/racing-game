@@ -274,3 +274,24 @@ export function trackProblems(track: Track): string[] {
   }
   return problems;
 }
+
+/**
+ * The same circuit driven the other way round. Boxes and pads keep their
+ * places; each ramp moves to the far end of its straight so that there is
+ * still a clear run-up and landing in the new direction.
+ */
+export function reverseTrack(def: TrackDef): TrackDef {
+  const length = new Track(def).length;
+  const flip = (f: number): number => (((1 - f) % 1) + 1) % 1;
+  const [first, ...rest] = def.points;
+  return {
+    ...def,
+    id: `${def.id}-reverse`,
+    name: `${def.name} (reversed)`,
+    points: [first, ...rest.reverse()],
+    start: def.start ? flip(def.start) : undefined,
+    boxRows: def.boxRows.map(flip),
+    pads: def.pads?.map(([f, lat]) => [flip(f), -lat] as [number, number]),
+    jumps: def.jumps?.map((f) => flip(f + 75 / length)),
+  };
+}
