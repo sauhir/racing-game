@@ -65,6 +65,7 @@ export class Hud {
   private readonly message = $('message');
   private readonly title = $('title');
   private readonly pause = $('pause');
+  private readonly select = $('select');
   private readonly results = $('results');
   private readonly resultsTitle = $('results-title');
   private readonly resultsTable = $<HTMLTableElement>('results-table');
@@ -97,11 +98,37 @@ export class Hud {
     }
   }
 
-  show(screen: 'title' | 'race' | 'pause' | 'results'): void {
+  show(screen: 'title' | 'select' | 'race' | 'pause' | 'results'): void {
     this.title.classList.toggle('hidden', screen !== 'title');
+    this.select.classList.toggle('hidden', screen !== 'select');
     this.pause.classList.toggle('hidden', screen !== 'pause');
     this.results.classList.toggle('hidden', screen !== 'results');
-    this.hud.classList.toggle('hidden', screen === 'title');
+    this.hud.classList.toggle('hidden', screen === 'title' || screen === 'select');
+  }
+
+  /** Fills in the track and car pickers on the selection screen. */
+  showSelection(
+    row: number, trackName: string, trackInfo: string, carName: string, carInfo: string,
+    stats: [string, number][],
+  ): void {
+    $('pick-track').classList.toggle('active', row === 0);
+    $('pick-car').classList.toggle('active', row === 1);
+    $('track-name').textContent = trackName;
+    $('track-sub').textContent = trackInfo;
+    $('car-name').textContent = carName;
+    $('car-sub').textContent = carInfo;
+    $('car-stats').replaceChildren(
+      ...stats.flatMap(([label, value]) => {
+        const name = document.createElement('span');
+        name.textContent = label;
+        const bar = document.createElement('div');
+        bar.className = 'bar';
+        const fill = document.createElement('i');
+        fill.style.width = `${Math.round(Math.max(0.08, Math.min(1, value)) * 100)}%`;
+        bar.append(fill);
+        return [name, bar];
+      }),
+    );
   }
 
   /** Flash a centre-screen message. seconds = 0 keeps it until cleared. */

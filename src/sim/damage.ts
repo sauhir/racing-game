@@ -39,7 +39,7 @@ export function applyImpact(car: Car, closingSpeed: number): HitResult {
 }
 
 function hurt(car: Car, damage: number): HitResult {
-  car.health -= damage;
+  car.health -= damage * car.stats.armour;
   if (car.health > 0.0001) return 'hit';
   car.health = 0;
   car.wrecked = WRECK_TIME;

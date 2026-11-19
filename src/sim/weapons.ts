@@ -154,7 +154,7 @@ export class Weapons {
         ay = t.y;
       } else {
         const s = track.sample(m.sampleIdx + 9);
-        const lane = t ? clamp(t.lat, -track.halfWidth, track.halfWidth) * 0.6 : 0;
+        const lane = t ? clamp(t.lat, -s.hw, s.hw) * 0.6 : 0;
         ax = s.x + s.nx * lane;
         ay = s.y + s.ny * lane;
       }
@@ -164,7 +164,7 @@ export class Weapons {
       m.y += Math.sin(m.heading) * WEAPON.missileSpeed * dt;
       m.sampleIdx = track.nearest(m.x, m.y, m.sampleIdx);
 
-      let boom = m.life <= 0 || Math.abs(track.lateral(m.sampleIdx, m.x, m.y)) > track.wallDist - 0.6;
+      let boom = m.life <= 0 || Math.abs(track.lateral(m.sampleIdx, m.x, m.y)) > track.samples[m.sampleIdx].wall - 0.6;
       for (const o of cars) {
         if (o === m.owner || o.wrecked > 0) continue;
         if ((o.x - m.x) ** 2 + (o.y - m.y) ** 2 < 2.8 * 2.8) boom = true;
@@ -185,7 +185,8 @@ export class Weapons {
       if (h.age < WEAPON.armDelay) continue;
       const radius = h.kind === 'mine' ? WEAPON.mineTrigger : WEAPON.oilRadius;
       for (const o of cars) {
-        if (o.wrecked > 0 || o.finished || o.invulnerable > 0) continue;
+        // Cars in mid-air pass clean over mines and oil.
+        if (o.wrecked > 0 || o.finished || o.invulnerable > 0 || o.z > 0.8) continue;
         if ((o.x - h.x) ** 2 + (o.y - h.y) ** 2 > radius * radius) continue;
         if (h.kind === 'mine') {
           this.hazards.splice(i, 1);

@@ -36,7 +36,6 @@ export class AIDriver {
     const p = this.personality;
     const sp = track.spacing;
     const speed = car.speed;
-    const maxOff = track.halfWidth - 1.8;
 
     // Slow drift across the road so the pack does not drive in single file.
     this.wanderTimer -= dt;
@@ -66,6 +65,7 @@ export class AIDriver {
     // Steer at a point on the racing line some way ahead.
     const look = 9 + speed * 0.42;
     const target = track.sample(car.sampleIdx + Math.round(look / sp));
+    const maxOff = target.hw - 1.8;
     const box = world && !car.item && !car.finished ? this.boxAhead(car, track, world.boxes) : null;
     const lane = box ?? target.line * (0.5 + 0.5 * p.skill) + this.wander;
     const offset = clamp(lane + this.avoid * (box === null ? 1 : 0.4), -maxOff, maxOff);

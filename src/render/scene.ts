@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { Theme } from './themes';
 
 const SKY = 0x8fd3ff;
 const SUN_OFFSET = new THREE.Vector3(45, 90, 30);
@@ -9,6 +10,7 @@ export class View {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(48, 1, 1, 900);
   private readonly sun: THREE.DirectionalLight;
+  private readonly hemi: THREE.HemisphereLight;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -19,7 +21,8 @@ export class View {
     this.scene.background = new THREE.Color(SKY);
     this.scene.fog = new THREE.Fog(SKY, 180, 620);
 
-    this.scene.add(new THREE.HemisphereLight(0xdff3ff, 0x6fae4f, 1.5));
+    this.hemi = new THREE.HemisphereLight(0xdff3ff, 0x6fae4f, 1.5);
+    this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xfff2d6, 2.4);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
@@ -34,6 +37,20 @@ export class View {
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
+  }
+
+  /** Sky, fog and light colours for a track's theme. */
+  setTheme(t: Theme): void {
+    (this.scene.background as THREE.Color).set(t.sky);
+    const fog = this.scene.fog as THREE.Fog;
+    fog.color.set(t.sky);
+    fog.near = t.fogNear;
+    fog.far = t.fogFar;
+    this.sun.color.set(t.sun);
+    this.sun.intensity = t.sunIntensity;
+    this.hemi.color.set(t.hemiSky);
+    this.hemi.groundColor.set(t.hemiGround);
+    this.hemi.intensity = t.hemiIntensity;
   }
 
   resize(): void {

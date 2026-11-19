@@ -10,7 +10,8 @@ export function collideCars(a: Car, b: Car): number {
   const dy = b.y - a.y;
   const min = TUNING.radius * 1.9;
   const d2 = dx * dx + dy * dy;
-  if (d2 >= min * min) return 0;
+  // A car in mid-air sails over one on the ground.
+  if (d2 >= min * min || Math.abs(a.z - b.z) > 1.2) return 0;
   const d = Math.sqrt(d2) || 0.001;
   const nx = dx / d;
   const ny = dy / d;
@@ -34,10 +35,10 @@ export function collideCars(a: Car, b: Car): number {
  * and car.lat, so call it after progress has been updated. Returns impact speed.
  */
 export function collideWall(car: Car, track: Track): number {
-  const limit = track.wallDist - TUNING.radius * 0.8;
+  const s = track.samples[car.sampleIdx];
+  const limit = s.wall - TUNING.radius * 0.8;
   const over = Math.abs(car.lat) - limit;
   if (over <= 0) return 0;
-  const s = track.samples[car.sampleIdx];
   const side = Math.sign(car.lat);
   const nx = s.nx * side;
   const ny = s.ny * side;

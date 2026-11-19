@@ -2,11 +2,11 @@ import { clamp } from '../core/math';
 import { makeRng, type Rng } from '../core/rng';
 import type { Personality } from '../data/rivals';
 import { AIDriver } from './ai/driver';
-import { Car, NO_INPUT, type CarInput } from './car';
+import { BASE_STATS, Car, NO_INPUT, PAD_TIME, type CarInput, type CarStats } from './car';
 import { collideCars, collideWall } from './collision';
 import { applyImpact, repair, RESPAWN_IMMUNITY } from './damage';
 import { BOX_RADIUS, BOX_RESPAWN, makeBoxes, rollPrize, type BoxPrize, type ItemType, type PickupBox } from './items';
-import type { Track } from './track';
+import { PAD_HALF_LENGTH, PAD_HALF_WIDTH, RAMP_HEIGHT, type Track } from './track';
 import { Weapons, type WeaponEvent } from './weapons';
 
 export type RaceEvent =
@@ -19,6 +19,9 @@ export type RaceEvent =
   | { type: 'pickup'; car: Car; prize: BoxPrize }
   | { type: 'item'; car: Car; item: ItemType }
   | { type: 'wreck'; car: Car }
+  | { type: 'jump'; car: Car }
+  | { type: 'land'; car: Car }
+  | { type: 'pad'; car: Car }
   | WeaponEvent;
 
 export type RacePhase = 'grid' | 'countdown' | 'racing';
@@ -27,6 +30,10 @@ export interface RaceConfig {
   laps: number;
   playerName: string;
   playerColor: number;
+  /** The player's car: body style id and its stats. Defaults to the standard car. */
+  playerCar?: { id: string; stats: CarStats };
+  /** Looks up a rival's car by the id on their personality. */
+  carFor?: (id: string) => CarStats;
   rivals: Personality[];
   seed: number;
   /** Maximum CPU top-speed change from rubber-banding (0.06 = 6%). */
@@ -41,7 +48,7 @@ const GRID_GAP = 7;
 const GRID_LATERAL = 3.2;
 const COUNTDOWN = 3;
 const AUTOPILOT: Personality = {
-  name: 'Autopilot', color: 0, skill: 0.8, aggression: 0.5, errorRate: 0.02, drift: 0.6, boostAt: 0.5, itemUse: 0.6,
+  name: 'Autopilot', color: 0, skill: 0.8, aggression: 0.5, errorRate: 0.02, drift: 0.6, boostAt: 0.5, itemUse: 0.6, car: 'bubble',
 };
 
 export class Race {
@@ -76,18 +83,24 @@ export class Race {
     this.prizeRng = makeRng(config.seed * 7919 + 13);
 
     config.rivals.forEach((p, i) => {
-      const car = new Car(i, p.name, p.color, false);
+      const car = new Car(i, p.name, p.color, false, config.carFor?.(p.car) ?? BASE_STATS);
+      car.model = p.car;
       this.cars.push(car);
       this.drivers.set(car, new AIDriver(p, makeRng(Math.floor(rng() * 1e9))));
       this.baseScale.set(car, 0.9 + 0.1 * p.skill);
     });
     // The player starts at the back of the grid and has to earn it.
-    this.player = new Car(this.cars.length, config.playerName, config.playerColor, true);
+    this.player = new Car(
+      this.cars.length, config.playerName, config.playerColor, true, config.playerCar?.stats ?? BASE_STATS,
+    );
+    this.player.model = config.playerCar?.id ?? 'bubble';
     this.cars.push(this.player);
     this.baseScale.set(this.player, 1);
     if (config.autopilot) this.drivers.set(this.player, new AIDriver(AUTOPILOT, makeRng(Math.floor(rng() * 1e9))));
 
     this.cars.forEach((car, slot) => {
+      car.gripScale = track.def.grip ?? 1;
+      if (track.def.offroadSpeed) car.offroadSpeed = track.def.offroadSpeed;
       const lateral = slot % 2 === 0 ? GRID_LATERAL : -GRID_LATERAL;
       const p = track.pointAt(track.length - 10 - slot * GRID_GAP, lateral);
       car.place(p.x, p.y, p.heading);
@@ -203,7 +216,10 @@ export class Race {
 
     for (const car of this.cars) {
       const lapBefore = car.lap;
+      const idxBefore = car.sampleIdx;
+      if (car.prevZ > 0 && car.z === 0) events.push({ type: 'land', car });
       this.updateProgress(car);
+      if (!car.airborne && car.wrecked <= 0) this.trackFeatures(car, idxBefore, events);
       const hit = collideWall(car, track);
       if (hit > 3) events.push({ type: 'hit', x: car.x, y: car.y, strength: hit, player: car.isPlayer, wall: true });
       if (this.combat && applyImpact(car, hit) === 'wreck') this.wreck(car, events);
@@ -238,6 +254,32 @@ export class Race {
     this.wrongWay = flow < -4 && !p.finished ? this.wrongWay + dt : 0;
 
     return events;
+  }
+
+  /** Ramps and boost pads under a car that is on the ground. */
+  private trackFeatures(car: Car, idxBefore: number, events: RaceEvent[]): void {
+    const track = this.track;
+    const s = track.samples[car.sampleIdx];
+    const onRoad = Math.abs(car.lat) < s.hw;
+    car.lift = onRoad ? track.rampHeight(car.sampleIdx, car.x, car.y) : 0;
+    for (const j of track.jumps) {
+      // Take off when the car crosses the lip going forwards at a decent speed.
+      const before = track.wrap(j - idxBefore);
+      const after = track.wrap(car.sampleIdx - j);
+      if (before === 0 || before > 6 || after > 6 || !onRoad) continue;
+      const v = car.forwardSpeed;
+      if (v < 14) continue;
+      car.vz = clamp(v * 0.23, 5, 10.5);
+      car.z = RAMP_HEIGHT;
+      car.lift = 0;
+      events.push({ type: 'jump', car });
+    }
+    for (const pad of track.pads) {
+      const d = track.wrap(car.sampleIdx - pad.index + PAD_HALF_LENGTH);
+      if (d > PAD_HALF_LENGTH * 2 || Math.abs(car.lat - pad.lat) > PAD_HALF_WIDTH) continue;
+      if (car.pad < PAD_TIME - 0.3) events.push({ type: 'pad', car });
+      car.pad = PAD_TIME;
+    }
   }
 
   private wreck(car: Car, events: RaceEvent[]): void {
@@ -275,7 +317,7 @@ export class Race {
     else if (delta > track.count / 2) car.lap--;
     car.sampleIdx = idx;
     car.lat = track.lateral(idx, car.x, car.y);
-    car.offroad = Math.abs(car.lat) > track.halfWidth + 0.6;
+    car.offroad = Math.abs(car.lat) > track.samples[idx].hw + 0.6;
     const along = clamp(track.along(idx, car.x, car.y), -track.spacing, track.spacing);
     car.progress = (car.lap - 1) * track.length + idx * track.spacing + along;
   }

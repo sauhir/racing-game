@@ -212,6 +212,15 @@ export class GameAudio {
     this.noiseBurst(0.45, 0.25 * vol, 'bandpass', 2000, 200);
   }
 
+  jump(): void {
+    this.noiseBurst(0.5, 0.18, 'bandpass', 500, 2600);
+  }
+
+  land(): void {
+    this.tone(90, 0.16, 'sine', 0.45, 0, 45);
+    this.noiseBurst(0.12, 0.2, 'lowpass', 900, 300);
+  }
+
   nitro(): void {
     this.tone(260, 0.3, 'sawtooth', 0.1, 0, 1040);
   }

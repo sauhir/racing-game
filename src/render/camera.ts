@@ -55,10 +55,11 @@ export class ChaseCamera {
   }
 
   /** Slow circling shot for the title screen. */
-  orbit(x: number, z: number, t: number): void {
+  orbit(x: number, z: number, t: number, radius = 30, height = 16, lookDown = 0): void {
     const a = t * 0.25;
-    this.camera.position.set(x + Math.cos(a) * 30, 16, z + Math.sin(a) * 30);
-    this.target.set(x, 1, z);
+    this.camera.position.set(x + Math.cos(a) * radius, height, z + Math.sin(a) * radius);
+    // Aiming below the subject lifts it clear of menus at the bottom of the screen.
+    this.target.set(x, 1 + lookDown, z);
     this.camera.lookAt(this.target);
     this.first = true;
   }

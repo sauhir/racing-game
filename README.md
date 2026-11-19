@@ -16,9 +16,31 @@ and all sound effects and music are synthesised with WebAudio. There are no asse
 | `Shift` | Boost |
 | `E` (or `X` / `Ctrl`) | Use the item from a mystery box |
 | `R` | Put the car back on the road |
-| `Esc` / `P` | Pause |
+| `Esc` / `P` | Pause (then `Backspace` to quit to the selection screen) |
 | `M` | Mute |
 | `Enter` | Start / restart |
+
+## Tracks and cars
+
+Pick a track and a car before each race (the choice is remembered).
+
+| Track | Theme | Notes |
+|---|---|---|
+| Sunny Meadows | Meadow | The original circuit |
+| Coconut Coast | Beach | Wide sweepers; sand off the road is slow |
+| Frostbite Ridge | Snow | A little less grip everywhere |
+| Dusty Gulch | Desert | Narrow canyon squeezes, wide bends, two jumps |
+| Random circuit | Any | Generated from a seed; press `R` on the selection screen for another |
+
+Every track has ramps to jump (no steering in the air; you fly over mines and oil), glowing
+boost pads, and stretches of wider and narrower road.
+
+| Car | Character |
+|---|---|
+| Bubble | Balanced all-rounder (the handling everything else is measured against) |
+| Dart | Highest top speed, takes more damage |
+| Hopper | Best acceleration and turn-in, slightly lower top speed |
+| Hauler | Takes much less damage, a little slower |
 
 ## Items and damage
 
@@ -59,13 +81,13 @@ Pushes to `main` are built, tested and deployed to GitHub Pages by
 - `src/render/` — Three.js scene, chase camera, procedural car and track meshes, particles and skid marks.
 - `src/audio/` — synthesised engine, tyres, impacts and a generated music loop.
 - `src/ui/` — HTML/CSS HUD, minimap and menus.
-- `src/data/` — track definitions and rival personalities.
+- `src/data/` — track definitions, car models and rival personalities.
 - `tests/` — Vitest specs for the simulation.
 
 ## Roadmap
 
 1. **Core race** (done): one track, drift handling, boost, CPU rivals, laps, HUD, audio.
 2. **Combat** (done): mystery boxes, six items, car damage and respawns.
-3. **Content**: beach, city, snow and desert tracks, more cars, seeded random tracks, quick-race options.
+3. **Content** (done): four themed tracks, random circuits, jumps, boost pads, four cars, quick-race selection.
 4. **Career**: tiered cups, prize money, upgrades and car unlocks saved in the browser.
 5. **Polish**: balance, performance and settings.

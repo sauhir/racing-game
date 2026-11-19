@@ -2,10 +2,13 @@ import type { TrackDef } from '../../sim/track';
 
 export const MEADOW: TrackDef = {
   id: 'meadow',
+  theme: 'meadow',
   name: 'Sunny Meadows',
   halfWidth: 8,
   verge: 5,
   boxRows: [0.09, 0.3, 0.52, 0.74, 0.93],
+  jumps: [0.045],
+  pads: [[0.34, 0], [0.63, -0.4], [0.82, 0.4]],
   points: [
     [0, 0], [120, 0], [230, 0], [300, 20], [330, 80], [290, 130], [220, 120], [170, 90],
     [120, 110], [130, 170], [190, 200], [260, 210], [290, 260], [250, 310], [160, 300],

@@ -31,7 +31,7 @@
     <div id="title" class="overlay">
       <h1>Pocket<br />Drifters</h1>
       <p class="tag">Slide it. Boost it. Win it.</p>
-      <p class="prompt">Press <kbd>Enter</kbd> to race</p>
+      <p class="prompt">Press <kbd>Enter</kbd> to start</p>
       <div class="keys">
         <span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive</span>
         <span><kbd>Space</kbd> handbrake (drift to charge boost)</span>
@@ -40,15 +40,46 @@
       </div>
     </div>
 
+    <div id="select" class="overlay hidden">
+      <h2>Quick Race</h2>
+      <div class="pickers">
+      <div class="picker" id="pick-track">
+        <span class="arrow">◀</span>
+        <div class="pick-body">
+          <div class="pick-label">Track</div>
+          <div class="pick-name" id="track-name"></div>
+          <div class="pick-sub" id="track-sub"></div>
+        </div>
+        <span class="arrow">▶</span>
+      </div>
+      <div class="picker" id="pick-car">
+        <span class="arrow">◀</span>
+        <div class="pick-body">
+          <div class="pick-label">Car</div>
+          <div class="pick-name" id="car-name"></div>
+          <div class="pick-sub" id="car-sub"></div>
+          <div class="stats" id="car-stats"></div>
+        </div>
+        <span class="arrow">▶</span>
+      </div>
+      </div>
+      <p class="prompt">Press <kbd>Enter</kbd> to race</p>
+      <div class="keys">
+        <span><kbd>↑</kbd><kbd>↓</kbd> switch between track and car · <kbd>←</kbd><kbd>→</kbd> change · <kbd>Esc</kbd> back</span>
+      </div>
+    </div>
+
     <div id="pause" class="overlay hidden">
       <h2>Paused</h2>
       <p class="prompt"><kbd>Esc</kbd> resume · <kbd>Enter</kbd> restart race</p>
+      <div class="keys"><span><kbd>Backspace</kbd> quit to track and car selection</span></div>
     </div>
 
     <div id="results" class="overlay hidden">
       <h2 id="results-title">Finished!</h2>
       <table id="results-table"></table>
       <p class="prompt">Press <kbd>Enter</kbd> to race again</p>
+      <div class="keys"><span><kbd>Esc</kbd> choose another track or car</span></div>
     </div>
 
     <script type="module" src="./src/main.ts"></script>

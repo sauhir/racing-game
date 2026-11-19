@@ -55,13 +55,20 @@ export interface CarStats {
   accel: number;
   turnRate: number;
   grip: number;
+  /** Multiplier on damage taken: below 1 is tougher, above 1 more fragile. */
+  armour: number;
 }
+
+const GRAVITY = 26;
+/** How long a boost pad keeps pushing after the car leaves it. */
+export const PAD_TIME = 1;
 
 export const BASE_STATS: CarStats = {
   maxSpeed: TUNING.maxSpeed,
   accel: TUNING.accel,
   turnRate: TUNING.turnRate,
   grip: TUNING.grip,
+  armour: 1,
 };
 
 export class Car {
@@ -83,6 +90,20 @@ export class Car {
   /** 0..1, how hard the car is sliding (drives smoke, skids, tyre noise). */
   slide = 0;
   throttle = 0;
+
+  /** Height above the road and vertical speed (jumps). */
+  z = 0;
+  vz = 0;
+  prevZ = 0;
+  /** Visual-only height while driving up a ramp. */
+  lift = 0;
+  /** Seconds of boost-pad push left. */
+  pad = 0;
+  /** Track surface: road grip multiplier and off-road top-speed factor. */
+  gripScale = 1;
+  offroadSpeed = TUNING.offroadSpeed;
+  /** Body style, used by the renderer. */
+  model = 'bubble';
 
   /** 0..1; at zero the car is wrecked and respawns. */
   health = 1;
@@ -140,6 +161,11 @@ export class Car {
     this.drifting = this.boosting = false;
     this.slide = 0;
     this.spin = this.oiled = 0;
+    this.z = this.prevZ = this.vz = this.lift = this.pad = 0;
+  }
+
+  get airborne(): boolean {
+    return this.z > 0 || this.vz > 0;
   }
 
   step(inp: CarInput, dt: number): void {
@@ -149,8 +175,25 @@ export class Car {
     this.prevY = this.y;
     this.prevHeading = this.heading;
 
+    this.prevZ = this.z;
+
     if (this.wrecked > 0) return;
     this.shield = Math.max(0, this.shield - dt);
+    this.pad = Math.max(0, this.pad - dt);
+
+    // In the air there is no grip, steering or drive: the car just flies.
+    if (this.airborne) {
+      this.vz -= GRAVITY * dt;
+      this.z += this.vz * dt;
+      if (this.z <= 0) this.z = this.vz = 0;
+      this.angVel *= Math.exp(-3 * dt);
+      this.heading += this.angVel * dt;
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+      this.slide = 0;
+      return;
+    }
+
     this.oiled = Math.max(0, this.oiled - dt);
     this.invulnerable = Math.max(0, this.invulnerable - dt);
     const spinning = this.spin > 0;
@@ -177,11 +220,11 @@ export class Car {
     // Damage costs up to 12% of top speed.
     let top = st.maxSpeed * this.speedScale * (0.88 + 0.12 * this.health);
     let acc = st.accel;
-    if (this.boosting) {
+    if (this.boosting || this.pad > 0) {
       top *= T.boostSpeed;
       acc *= T.boostAccel;
     }
-    if (this.offroad) top *= T.offroadSpeed;
+    if (this.offroad) top *= this.offroadSpeed;
 
     const throttle = clamp(inp.throttle, 0, 1);
     const brake = clamp(inp.brake, 0, 1);
@@ -235,7 +278,7 @@ export class Car {
 
     // Tyres: sideways velocity bleeds away quickly with grip, slowly in a drift.
     const vlBefore = vl;
-    vl *= Math.exp(-(this.drifting ? T.driftGrip : st.grip) * dt);
+    vl *= Math.exp(-(this.drifting ? T.driftGrip : st.grip) * this.gripScale * dt);
     if (this.drifting && vf > 0) {
       const lost = Math.hypot(vf, vlBefore) - Math.hypot(vf, vl);
       vf += lost * T.driftSpeedKeep;

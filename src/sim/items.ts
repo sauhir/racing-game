@@ -24,14 +24,15 @@ export interface PickupBox {
 /** Short, so the back of a tight pack still finds boxes waiting. */
 export const BOX_RESPAWN = 1.2;
 export const BOX_RADIUS = 2.1;
-const BOX_LANES = [-5.6, -2.8, 0, 2.8, 5.6];
+const BOX_LANES = [-0.7, -0.35, 0, 0.35, 0.7];
 
 /** Rows of mystery boxes across the road at the track's chosen spots. */
 export function makeBoxes(track: Track): PickupBox[] {
   const boxes: PickupBox[] = [];
   for (const fraction of track.def.boxRows) {
     for (const lane of BOX_LANES) {
-      const p = track.pointAt(fraction * track.length, lane);
+      const hw = track.pointAt(fraction * track.length, 0);
+      const p = track.pointAt(fraction * track.length, lane * track.samples[hw.index].hw);
       boxes.push({ x: p.x, y: p.y, respawn: 0 });
     }
   }

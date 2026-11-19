@@ -22,6 +22,8 @@ export class Effects {
   private readonly dummy = new THREE.Object3D();
   private readonly color = new THREE.Color();
   private next = 0;
+  /** Colours of the dirt kicked up off the road; set per track theme. */
+  dirt: [number, number] = [0x8a6a42, 0x6fae4f];
 
   private readonly skidPos = new Float32Array(MAX_SKID_QUADS * 18);
   private readonly skidGeo = new THREE.BufferGeometry();
@@ -101,6 +103,15 @@ export class Effects {
     this.burst(x, z, 20);
   }
 
+  /** Puff of dust where a car lands from a jump. */
+  landing(car: Car): void {
+    for (let i = 0; i < 10; i++) {
+      const a = Math.random() * Math.PI * 2;
+      this.spawn(car.x, 0.4, car.y, car.vx * 0.3 + Math.cos(a) * 5, 1 + Math.random() * 2,
+        car.vy * 0.3 + Math.sin(a) * 5, 0.4 + Math.random() * 0.3, 0.7, 2, 0xe9edf2);
+    }
+  }
+
   private addSkid(ax: number, az: number, bx: number, bz: number): void {
     const dx = bx - ax;
     const dz = bz - az;
@@ -139,7 +150,7 @@ export class Effects {
       const [lx, lz] = wheel(1);
       const [rx, rz] = wheel(-1);
 
-      const sliding = car.slide > 0.25 && !car.offroad && car.speed > 6;
+      const sliding = car.slide > 0.25 && !car.offroad && car.speed > 6 && !car.airborne;
       const last = this.lastWheel.get(car);
       if (sliding) {
         if (last) {
@@ -161,9 +172,9 @@ export class Effects {
           this.spawn(wx, 0.4, wz, car.vx * 0.15 + j(), 1.5 + Math.random(), car.vy * 0.15 + j(),
             0.5 + Math.random() * 0.4, 0.7, 2.6, 0xf2f4f8);
         }
-        if (car.offroad && car.speed > 8 && Math.random() < 0.5) {
+        if (car.offroad && car.speed > 8 && !car.airborne && Math.random() < 0.5) {
           this.spawn(wx, 0.3, wz, car.vx * 0.2 + j() * 2, 2 + Math.random() * 3, car.vy * 0.2 + j() * 2,
-            0.35 + Math.random() * 0.25, 0.5, 0.8, Math.random() < 0.5 ? 0x8a6a42 : 0x6fae4f);
+            0.35 + Math.random() * 0.25, 0.5, 0.8, this.dirt[Math.random() < 0.5 ? 0 : 1]);
         }
         // Battered cars trail smoke, then flames, from under the bonnet.
         if (car.health < 0.7 && Math.random() < (1 - car.health) * 0.45) {

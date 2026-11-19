@@ -2,7 +2,7 @@ import type { CarInput } from '../sim/car';
 
 const GAME_KEYS = new Set([
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD',
-  'ShiftLeft', 'ShiftRight', 'KeyE', 'KeyX', 'ControlLeft', 'ControlRight', 'Enter', 'Escape', 'KeyR', 'KeyM', 'KeyP',
+  'ShiftLeft', 'ShiftRight', 'KeyE', 'KeyX', 'ControlLeft', 'ControlRight', 'Enter', 'Escape', 'Backspace', 'KeyR', 'KeyM', 'KeyP',
 ]);
 
 const ITEM_KEYS = ['KeyE', 'KeyX', 'ControlLeft', 'ControlRight'];
