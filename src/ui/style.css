@@ -98,7 +98,6 @@ body {
 #flash.pickup { background: radial-gradient(ellipse, transparent 38%, rgba(255, 225, 90, 0.75) 75%, rgba(255, 120, 220, 0.85) 100%); }
 #flash.boom { background: radial-gradient(ellipse, rgba(255, 220, 150, 0.25) 0%, rgba(255, 140, 30, 0.6) 60%, rgba(255, 60, 20, 0.85) 100%); }
 #flash.hit { background: radial-gradient(ellipse, transparent 35%, rgba(255, 30, 30, 0.85) 100%); }
-#flash.boost { background: radial-gradient(ellipse, transparent 45%, rgba(60, 200, 255, 0.7) 100%); }
 #flash.shield { background: radial-gradient(ellipse, transparent 35%, rgba(90, 235, 255, 0.8) 100%); }
 #flash.gold { background: radial-gradient(ellipse, transparent 40%, rgba(255, 210, 60, 0.75) 100%); }
 @keyframes flash-fade { from { opacity: var(--flash, 1); } to { opacity: 0; } }

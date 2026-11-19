@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 import { lerpAngle } from '../core/math';
 import type { Car } from '../sim/car';
+import { GLOW_LAYER } from './scene';
 
 const SPHERE = new THREE.SphereGeometry(1, 24, 16);
 const GLASS = new THREE.MeshStandardMaterial({ color: 0x1c2a44, roughness: 0.15, metalness: 0.3 });
 const TYRE = new THREE.MeshLambertMaterial({ color: 0x23232b });
 const CHROME = new THREE.MeshStandardMaterial({ color: 0xeef1f6, roughness: 0.25, metalness: 0.5 });
-// Lamps are brighter than white so they bloom.
-const LAMP = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xfff6c8).multiplyScalar(2.2) });
-const TAIL = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff3b30).multiplyScalar(2.2) });
+// Lamps are tagged to glow (see blob).
+const LAMP = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xfff6c8) });
+const TAIL = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff3b30) });
 const STRIPE = new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.4 });
 /** Energy bubble: bright at the rim, with bands of light rolling over it. */
 const SHIELD = new THREE.ShaderMaterial({
@@ -55,6 +56,7 @@ function blob(
   m.scale.set(sx, sy, sz);
   m.position.set(x, y, z);
   m.castShadow = shadow;
+  if (mat === LAMP || mat === TAIL) m.layers.enable(GLOW_LAYER);
   return m;
 }
 
@@ -239,6 +241,7 @@ export class CarMesh {
     this.shield.scale.set(3, 2.2, 2.4);
     this.shield.position.y = 1;
     this.shield.visible = false;
+    this.shield.layers.enable(GLOW_LAYER);
     this.root.add(this.shield);
   }
 

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Race } from '../sim/race';
 import { WEAPON } from '../sim/weapons';
+import { GLOW_LAYER } from './scene';
 
 const MAX_MISSILES = 8;
 const MAX_MINES = 40;
@@ -71,7 +72,7 @@ function boxMaterial(): THREE.ShaderMaterial {
         float sweep = smoothstep(0.12, 0.0, abs(fract((vUv.x - vUv.y) * 0.5 + time * 0.8 + vSeed) - 0.5));
         float rim = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.0);
         float pulse = 0.85 + 0.15 * sin(time * 6.0 + vSeed * 20.0);
-        vec3 col = base * (0.7 + 0.2 * pulse) + sweep * 0.45 + rim * vec3(0.4) + m * vec3(1.3);
+        vec3 col = base * (0.6 + 0.2 * pulse) + sweep * 0.4 + rim * vec3(0.35) + m * vec3(1.0);
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -161,11 +162,13 @@ export class WorldItems {
     this.beams = new THREE.InstancedMesh(beamGeo, this.beamMat, count);
     this.beams.frustumCulled = false;
     this.beams.renderOrder = 2;
+    this.boxes.layers.enable(GLOW_LAYER);
+    this.beams.layers.enable(GLOW_LAYER);
     this.group.add(this.boxes, this.beams);
 
     const red = new THREE.MeshStandardMaterial({ color: 0xe8413a, roughness: 0.35 });
     const white = new THREE.MeshStandardMaterial({ color: 0xf7f7fa, roughness: 0.35 });
-    const flame = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffa02e).multiplyScalar(2.2) });
+    const flame = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffa02e).multiplyScalar(1.3) });
     for (let i = 0; i < MAX_MISSILES; i++) {
       const g = new THREE.Group();
       const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 1.3, 4, 10), white);
@@ -176,6 +179,7 @@ export class WorldItems {
       const jet = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), flame);
       jet.scale.x = 2.2;
       jet.position.x = -1.2;
+      jet.layers.enable(GLOW_LAYER);
       g.add(body, nose, jet);
       for (const [y, z] of [[0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]]) {
         const fin = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08 + Math.abs(y), 0.08 + Math.abs(z)), red);
@@ -189,13 +193,14 @@ export class WorldItems {
     }
 
     const mineBody = new THREE.MeshStandardMaterial({ color: 0x3a3f52, roughness: 0.5, flatShading: true });
-    const mineLight = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff3b30).multiplyScalar(2.5) });
+    const mineLight = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff3b30).multiplyScalar(1.3) });
     for (let i = 0; i < MAX_MINES; i++) {
       const g = new THREE.Group();
       const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.75, 0), mineBody);
       ball.castShadow = true;
       const light = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), mineLight);
       light.position.y = 0.7;
+      light.layers.enable(GLOW_LAYER);
       g.add(ball, light);
       g.visible = false;
       this.mines.push(g);
@@ -222,6 +227,7 @@ export class WorldItems {
       mesh.rotation.x = -Math.PI / 2;
       mesh.visible = false;
       mesh.renderOrder = 4;
+      mesh.layers.enable(GLOW_LAYER);
       this.pulses.push({ mesh, mat, age: 1, life: 1, radius: 1 });
       this.group.add(mesh);
     }

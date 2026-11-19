@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Car } from '../sim/car';
 import type { Missile } from '../sim/weapons';
+import { GLOW_LAYER } from './scene';
 
 const MAX_SKID_QUADS = 4000;
 const REAR_X = -1.3;
@@ -42,6 +43,7 @@ class ParticlePool {
     );
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = glow ? 4 : kind === 'fire' ? 3 : 2;
+    if (kind !== 'smoke') this.mesh.layers.enable(GLOW_LAYER);
     this.dummy.scale.setScalar(0);
     this.dummy.updateMatrix();
     for (let i = 0; i < size; i++) {
@@ -68,7 +70,7 @@ class ParticlePool {
     p.gravity = gravity;
     this.color.set(color);
     // Fire and glow colours are pushed past white so the bloom pass picks them up.
-    if (this.kind !== 'smoke') this.color.multiplyScalar(this.kind === 'fire' ? 1.9 : 1.5);
+    if (this.kind !== 'smoke') this.color.multiplyScalar(this.kind === 'fire' ? 1.3 : 1.1);
     this.mesh.setColorAt(i, this.color);
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
   }

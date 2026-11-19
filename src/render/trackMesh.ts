@@ -3,6 +3,7 @@ import { makeRng, type Rng } from '../core/rng';
 import {
   PAD_HALF_LENGTH, PAD_HALF_WIDTH, RAMP_HEIGHT, RAMP_SAMPLES, type ThemeId, type Track, type TrackSample,
 } from '../sim/track';
+import { GLOW_LAYER } from './scene';
 import { THEMES } from './themes';
 
 type ColorFn = (i: number) => number | null;
@@ -227,8 +228,6 @@ export function buildTrackScene(track: Track): TrackScene {
   const padTex = chevronTexture('#1ec8ff', '#ffffff');
   padTex.repeat.set(2, 1);
   const padMat = new THREE.MeshBasicMaterial({
-    // Brighter than white, so the pads glow through the bloom pass.
-    color: new THREE.Color(0xffffff).multiplyScalar(1.5),
     map: padTex, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
   });
   for (const pad of track.pads) {
@@ -240,6 +239,7 @@ export function buildTrackScene(track: Track): TrackScene {
     m.rotation.x = -Math.PI / 2;
     m.rotation.z = -Math.atan2(s.ty, s.tx);
     m.position.set(s.x + s.nx * pad.lat, 0.08, s.y + s.ny * pad.lat);
+    m.layers.enable(GLOW_LAYER);
     group.add(m);
   }
 

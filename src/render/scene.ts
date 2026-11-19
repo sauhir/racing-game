@@ -2,11 +2,22 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import type { Quality } from '../core/settings';
 import type { Theme } from './themes';
 
 const SKY = 0x8fd3ff;
+
+/**
+ * Objects tagged with this layer glow; nothing else does. Tag with
+ * `object.layers.enable(GLOW_LAYER)` (they stay on the default layer too).
+ */
+export const GLOW_LAYER = 1;
+const glowLayers = new THREE.Layers();
+glowLayers.set(GLOW_LAYER);
+const BLACK = new THREE.MeshBasicMaterial({ color: 0x000000 });
+const BLACK_BACKGROUND = new THREE.Color(0x000000);
 const SUN_OFFSET = new THREE.Vector3(45, 90, 30);
 
 /** Renderer, scene and lighting. The sun's shadow box follows a focus point. */
@@ -17,8 +28,9 @@ export class View {
   private readonly sun: THREE.DirectionalLight;
   private readonly hemi: THREE.HemisphereLight;
   private quality: Quality = 'high';
+  private readonly glowComposer: EffectComposer;
   private readonly composer: EffectComposer;
-  private readonly bloom: UnrealBloomPass;
+  private readonly hidden = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -42,13 +54,30 @@ export class View {
     this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);
 
-    // Post-processing: render in HDR, then bloom whatever is brighter than
-    // white (glow particles, boxes, flames, pads) so it genuinely shines.
-    const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
-    this.composer = new EffectComposer(this.renderer, target);
+    // Selective bloom. First the scene is drawn with everything except the
+    // glow-tagged effects painted black, and that image is blurred; then the
+    // normal picture is drawn and the blur is added on top. Sunlit paint, snow
+    // and sand therefore never glow, however bright they are.
+    const hdr = () => new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+    this.glowComposer = new EffectComposer(this.renderer, hdr());
+    this.glowComposer.renderToScreen = false;
+    this.glowComposer.addPass(new RenderPass(this.scene, this.camera));
+    this.glowComposer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.9, 0.45, 0));
+
+    this.composer = new EffectComposer(this.renderer, hdr());
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.45, 0.4, 1.0);
-    this.composer.addPass(this.bloom);
+    const add = new ShaderPass(
+      new THREE.ShaderMaterial({
+        uniforms: { tDiffuse: { value: null }, glow: { value: this.glowComposer.renderTarget2.texture } },
+        vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader:
+          'uniform sampler2D tDiffuse; uniform sampler2D glow; varying vec2 vUv;' +
+          'void main() { gl_FragColor = texture2D(tDiffuse, vUv) + vec4(texture2D(glow, vUv).rgb, 0.0); }',
+      }),
+      'tDiffuse',
+    );
+    add.needsSwap = true;
+    this.composer.addPass(add);
     this.composer.addPass(new OutputPass());
 
     this.resize();
@@ -88,8 +117,10 @@ export class View {
     const ratio = this.quality === 'high' ? Math.min(window.devicePixelRatio, 2) : 1;
     this.renderer.setPixelRatio(ratio);
     this.renderer.setSize(w, h, false);
-    this.composer.setPixelRatio(ratio);
-    this.composer.setSize(w, h);
+    for (const c of [this.glowComposer, this.composer]) {
+      c.setPixelRatio(ratio);
+      c.setSize(w, h);
+    }
     this.camera.aspect = w / h;
     // Keep a useful view ahead on tall, narrow windows.
     this.camera.fov = w / h < 1 ? 62 : 48;
@@ -104,7 +135,31 @@ export class View {
 
   render(): void {
     // Low quality skips the bloom pipeline entirely.
-    if (this.quality === 'low') this.renderer.render(this.scene, this.camera);
-    else this.composer.render();
+    if (this.quality === 'low') {
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
+    // Glow pass: black out everything that is not tagged to glow (it still
+    // hides glowing things behind it), with no sky, fog or shadow work.
+    const scene = this.scene;
+    const { background, fog } = scene;
+    this.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh && !mesh.layers.test(glowLayers)) {
+        this.hidden.set(mesh, mesh.material);
+        mesh.material = BLACK;
+      }
+    });
+    scene.background = BLACK_BACKGROUND;
+    scene.fog = null;
+    this.renderer.shadowMap.autoUpdate = false;
+    this.glowComposer.render();
+    this.renderer.shadowMap.autoUpdate = true;
+    scene.background = background;
+    scene.fog = fog;
+    for (const [mesh, material] of this.hidden) mesh.material = material;
+    this.hidden.clear();
+
+    this.composer.render();
   }
 }

@@ -194,7 +194,7 @@ export class Hud {
   }
 
   /** A burst of colour over the whole screen. */
-  flash(kind: 'pickup' | 'boom' | 'hit' | 'boost' | 'shield' | 'gold', strength = 1, seconds = 0.45): void {
+  flash(kind: 'pickup' | 'boom' | 'hit' | 'shield' | 'gold', strength = 1, seconds = 0.45): void {
     const el = this.flashEl;
     el.className = '';
     el.style.setProperty('--flash', String(Math.min(1, strength)));

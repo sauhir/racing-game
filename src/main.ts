@@ -61,7 +61,6 @@ class Game {
   private lapStart = 0;
   private bestLap = 0;
   private resultsDelay = 0;
-  private wasBoosting = false;
 
   // Career state.
   private mode: 'quick' | 'career' = 'quick';
@@ -528,7 +527,6 @@ class Game {
           this.worldItems?.pulse(e.car.x, e.car.y, 0x4fd8ff, 6, 0.35);
           if (e.car === player) {
             this.audio.nitro();
-            this.hud.flash('boost', 0.8);
           }
           break;
         case 'pickup':
@@ -550,7 +548,6 @@ class Game {
             this.effects.ringBurst(e.car.x, e.car.y, 0x6ff0ff, 9, 24);
           } else if (e.item === 'nitro') {
             this.effects.ringBurst(e.car.x, e.car.y, 0xffc23c, 12, 24);
-            if (e.car === player) this.hud.flash('boost', 1);
           } else if (e.item === 'missile') {
             this.worldItems?.pulse(e.car.x, e.car.y, 0xff8a2e, 5, 0.3, 0.8);
           }
@@ -591,7 +588,7 @@ class Game {
             if (e.result === 'blocked') {
               this.audio.shieldPop();
               this.hud.say('BLOCKED!', 1, 'small');
-              this.hud.flash('shield', 0.8);
+              this.hud.flash('shield', 0.45, 0.3);
             } else {
               this.chase.addShake(0.6);
               this.hud.flash('hit', 0.9, 0.6);
@@ -678,8 +675,6 @@ class Game {
         this.race.boxes.forEach((box, i) => {
           if (box.respawn === 0 && Math.random() < 0.12) this.effects.sparkle(box.x, box.y, i + Math.floor(this.clock * 3));
         });
-        if (player.boosting && !this.wasBoosting) this.hud.flash('boost', 0.7);
-        this.wasBoosting = player.boosting;
         this.effects.update(this.race.cars, this.race.weapons.missiles, STEP);
       }
 
